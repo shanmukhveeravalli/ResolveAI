@@ -70,6 +70,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleHttpMessageNotReadableException(
+            org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("BAD_REQUEST")
+                .message("Malformed JSON request or invalid parameter value")
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ApiErrorResponse> handleEmailAlreadyExistsException(
             EmailAlreadyExistsException ex, HttpServletRequest request) {
@@ -128,6 +143,36 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
+    @ExceptionHandler(com.resolveai.common.exception.ResourceNotFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleResourceNotFoundException(
+            com.resolveai.common.exception.ResourceNotFoundException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.NOT_FOUND.value())
+                .error("NOT_FOUND")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    @ExceptionHandler(com.resolveai.incident.exception.InvalidIncidentStatusTransitionException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidIncidentStatusTransitionException(
+            com.resolveai.incident.exception.InvalidIncidentStatusTransitionException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("INVALID_STATUS_TRANSITION")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

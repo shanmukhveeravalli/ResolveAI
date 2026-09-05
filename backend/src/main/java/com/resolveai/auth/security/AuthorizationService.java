@@ -115,9 +115,68 @@ public class AuthorizationService {
         if (hasRole(RoleConstants.ENGINEER) && (currentUserId.equals(assigneeId) || currentUserId.equals(reporterId))) {
             return true;
         }
-        User currentUser = getCurrentUser().orElse(null);
-        if (hasRole(RoleConstants.MANAGER) && currentUser != null && currentUser.getTeam() != null) {
-            return currentUser.getTeam().getId().equals(teamId);
+        if (hasRole(RoleConstants.MANAGER)) {
+            if (currentUserId.equals(reporterId)) {
+                return true;
+            }
+            User currentUser = getCurrentUser().orElse(null);
+            if (currentUser != null && currentUser.getTeam() != null) {
+                return currentUser.getTeam().getId().equals(teamId);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the currently authenticated user can view the given incident entity.
+     */
+    public boolean canAccessIncident(com.resolveai.incident.entity.Incident incident) {
+        if (incident == null) {
+            return false;
+        }
+        Long reporterId = incident.getReporter() != null ? incident.getReporter().getId() : null;
+        Long assigneeId = incident.getAssignee() != null ? incident.getAssignee().getId() : null;
+        Long teamId = incident.getTeam() != null ? incident.getTeam().getId() : null;
+        return canAccessIncident(reporterId, assigneeId, teamId);
+    }
+
+    /**
+     * Checks if the currently authenticated user can edit incident details (title, description, etc.).
+     * - ADMIN, MANAGER: can update any accessible incident
+     * - ENGINEER: can update if assigned or reporter
+     * - EMPLOYEE: can update only if reporter and status is still NEW
+     */
+    public boolean canUpdateIncident(com.resolveai.incident.entity.Incident incident) {
+        if (!canAccessIncident(incident)) {
+            return false;
+        }
+        if (isAdmin() || hasRole(RoleConstants.MANAGER) || hasRole(RoleConstants.ENGINEER)) {
+            return true;
+        }
+        if (hasRole(RoleConstants.EMPLOYEE)) {
+            return incident.getStatus() == com.resolveai.incident.entity.IncidentStatus.NEW;
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the currently authenticated user is authorized to perform the requested status transition.
+     */
+    public boolean canChangeStatus(com.resolveai.incident.entity.Incident incident, com.resolveai.incident.entity.IncidentStatus targetStatus) {
+        if (!canAccessIncident(incident)) {
+            return false;
+        }
+        if (isAdmin() || hasRole(RoleConstants.MANAGER)) {
+            return true;
+        }
+        if (hasRole(RoleConstants.ENGINEER)) {
+            return true;
+        }
+        if (hasRole(RoleConstants.EMPLOYEE)) {
+            // Employees can only close or reopen a resolved incident
+            return (targetStatus == com.resolveai.incident.entity.IncidentStatus.CLOSED ||
+                    targetStatus == com.resolveai.incident.entity.IncidentStatus.REOPENED)
+                    && incident.getStatus() == com.resolveai.incident.entity.IncidentStatus.RESOLVED;
         }
         return false;
     }

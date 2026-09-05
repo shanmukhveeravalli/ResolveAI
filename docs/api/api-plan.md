@@ -282,6 +282,11 @@ Consistent across all backend exceptions:
 }
 ```
 
+#### `GET /api/incidents/{id}/comments`
+- **Access**: Authenticated (Subject to incident view permission)
+- **Description**: Retrieves all comments for an incident. Internal investigation notes are filtered out for EMPLOYEE callers.
+- **Response `200 OK`**: List of `IncidentCommentResponse`.
+
 #### `GET /api/incidents/{id}/history`
 - **Access**: Authenticated (Subject to incident view permission)
 - **Description**: Retrieves the complete audit history of all status, assignment, and priority transitions for an incident.
