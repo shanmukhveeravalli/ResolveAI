@@ -141,16 +141,44 @@ Detailed architecture and planning documentation is maintained in the [`docs/`](
 
 ## Local Setup & Development
 
-*(Detailed step-by-step setup will activate during Phase 1: Project Setup)*
-
+### 1. Configure Environment
+Copy the `.env.example` template to `.env` (for custom local values):
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/resolve-ai.git
-cd resolve-ai
-
-# Inspect environment configuration
 cp .env.example .env
 ```
+
+### 2. Run Backend (Spring Boot 3 + Java 21)
+You can compile, test, and run the backend using Maven:
+```bash
+# From the project root, compile and run automated tests
+mvn clean test
+
+# Run the Spring Boot application (defaults to port 8080)
+mvn spring-boot:run -pl backend
+
+# Or navigate directly into the backend folder
+cd backend
+mvn spring-boot:run
+```
+- **Health Check**: `http://localhost:8080/api/health`
+- **Swagger / OpenAPI Documentation**: `http://localhost:8080/swagger-ui.html`
+
+### 3. Run Frontend (React 18 + TypeScript + Vite)
+In a separate terminal:
+```bash
+# Navigate to the frontend directory
+cd frontend
+
+# Install dependencies (if not already installed)
+npm install
+
+# Start development server (defaults to port 5173)
+npm run dev
+
+# Build for production
+npm run build
+```
+- **Frontend URL**: `http://localhost:5173`
 
 ---
 
