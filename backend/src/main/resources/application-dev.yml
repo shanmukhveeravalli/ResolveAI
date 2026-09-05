@@ -4,7 +4,7 @@ server:
 spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:resolveai_db}
-    username: ${DB_USER:postgres}
+    username: ${DB_USERNAME:${DB_USER:postgres}}
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
@@ -22,7 +22,7 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
-    enabled: ${FLYWAY_ENABLED:false} # Phase 1 foundation: disabled by default; enabled in Phase 2 with migrations
+    enabled: ${FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     baseline-on-migrate: true
 
