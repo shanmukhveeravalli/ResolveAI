@@ -39,3 +39,7 @@ springdoc:
 resolveai:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+  jwt:
+    secret: ${JWT_SECRET:c2VjdXJlX2VudGVycHJpc2VfamF2YV8yMV9zcHJpbmdfYm9vdF9qd3Rfc2VjcmV0X2tleV9leGFtcGxl}
+    access-expiration-ms: ${JWT_ACCESS_EXPIRATION:${JWT_EXPIRATION_MS:900000}}
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:${JWT_REFRESH_EXPIRATION_MS:604800000}}
