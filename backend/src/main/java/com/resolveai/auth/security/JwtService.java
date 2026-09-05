@@ -44,7 +44,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(String.valueOf(user.getId()))
                 .claim(CLAIM_EMAIL, user.getEmail())
-                .claim(CLAIM_ROLE, user.getRole() != null ? user.getRole().getName() : "EMPLOYEE")
+                .claim(CLAIM_ROLE, user.getRole() != null ? user.getRole().getName() : RoleConstants.EMPLOYEE)
                 .claim(CLAIM_TYPE, TOKEN_TYPE_ACCESS)
                 .issuedAt(new Date(now))
                 .expiration(new Date(now + customExpirationMs))

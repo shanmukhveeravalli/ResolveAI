@@ -25,7 +25,7 @@ public class SecurityUser implements UserDetails {
         if (user.getRole() == null || user.getRole().getName() == null) {
             return Collections.emptyList();
         }
-        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().getName()));
+        return List.of(new SimpleGrantedAuthority(RoleConstants.ROLE_PREFIX + user.getRole().getName()));
     }
 
     @Override

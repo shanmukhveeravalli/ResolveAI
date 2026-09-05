@@ -476,3 +476,38 @@ Consistent across all backend exceptions:
 - **Access**: `ADMIN`
 - **Description**: Queryable audit log history with actor, resource, action, and date range filters.
 - **Response `200 OK`**: `PageResponse<AuditLogDTO>`.
+
+---
+
+### 3.10 Role-Based Access Control (`/api/rbac`)
+
+Endpoints demonstrating explicit method-level authorization (`@PreAuthorize`) and Spring Security authority validation:
+
+#### `GET /api/rbac/employee`
+- **Access**: `ROLE_EMPLOYEE`, `ROLE_ADMIN`
+- **Description**: Accesses employee-tier operational resources.
+- **Response `200 OK`**: `ApiResponse<Map<String, Object>>` with resource info.
+- **Response `403 Forbidden`**: Returned for `ENGINEER` or `MANAGER` callers.
+
+#### `GET /api/rbac/engineer`
+- **Access**: `ROLE_ENGINEER`, `ROLE_ADMIN`
+- **Description**: Accesses engineer-tier diagnostic and technical resources.
+- **Response `200 OK`**: `ApiResponse<Map<String, Object>>` with resource info.
+- **Response `403 Forbidden`**: Returned for `EMPLOYEE` or `MANAGER` callers.
+
+#### `GET /api/rbac/manager`
+- **Access**: `ROLE_MANAGER`, `ROLE_ADMIN`
+- **Description**: Accesses manager-tier reporting and workload management resources.
+- **Response `200 OK`**: `ApiResponse<Map<String, Object>>` with resource info.
+- **Response `403 Forbidden`**: Returned for `EMPLOYEE` or `ENGINEER` callers.
+
+#### `GET /api/rbac/admin`
+- **Access**: `ROLE_ADMIN` exclusively
+- **Description**: Accesses administrative system configurations.
+- **Response `200 OK`**: `ApiResponse<Map<String, Object>>` with resource info.
+- **Response `403 Forbidden`**: Returned for `EMPLOYEE`, `ENGINEER`, or `MANAGER` callers.
+
+#### Security & Error Semantics:
+- `401 Unauthorized`: Unauthenticated request (missing, invalid, or expired JWT).
+- `403 Forbidden`: Authenticated request from a user lacking the requisite role. Emits standard `ApiErrorResponse` envelope.
+

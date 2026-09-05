@@ -254,3 +254,35 @@ To be enabled in Phase 13 without impacting earlier phases:
 - **Rate Limiting**:
   - Token bucket filter on `/api/auth/login` (prevent brute-force: 5 requests / min per IP).
   - Rate limiting on `/api/ai/*` (prevent LLM quota exhaustion: 10 requests / min per user).
+
+---
+
+## 11. Role-Based Access Control (RBAC) & Authorization Architecture
+
+ResolveAI implements a defense-in-depth authorization model combining stateless JWT identity verification with Spring Security method-level access control.
+
+### 11.1 Roles and Authorities Mapping
+System roles are represented by the `roles` entity in PostgreSQL and mapped into Spring Security `GrantedAuthority` tokens with a canonical `ROLE_` prefix:
+
+| Role Name | GrantedAuthority | Intended Domain Scope |
+| :--- | :--- | :--- |
+| `EMPLOYEE` | `ROLE_EMPLOYEE` | Ticket reporting, personal profile access, employee resources. |
+| `ENGINEER` | `ROLE_ENGINEER` | Ticket triage, incident investigation, technical KB contributions. |
+| `MANAGER` | `ROLE_MANAGER` | Team incident assignment, SLA monitoring, escalation handling. |
+| `ADMIN` | `ROLE_ADMIN` | Global configuration, user administration, full system access. |
+
+### 11.2 Method-Level Security
+- Declared globally via `@EnableMethodSecurity(prePostEnabled = true)` on `SecurityConfig`.
+- Controllers and services declare granular access boundaries using `@PreAuthorize("hasAnyRole('...', '...')")`.
+- Avoids implicit role hierarchy assumptions (`ADMIN > MANAGER > ENGINEER > EMPLOYEE`); permissions are explicitly assigned to each endpoint to prevent accidental privilege leakage.
+
+### 11.3 Status Code Separation: 401 vs. 403
+- **`401 UNAUTHORIZED`**: Dispatched by `JwtAuthenticationEntryPoint` when an incoming request lacks a valid Bearer token, has a malformed token, or has an expired token.
+- **`403 FORBIDDEN`**: Dispatched by `JwtAccessDeniedHandler` (filter chain) or `GlobalExceptionHandler` (method security) when the user identity is verified, but their granted roles do not satisfy the required endpoint permission. Both emit the standard RFC-compliant `ApiErrorResponse` JSON envelope.
+
+### 11.4 Authoritative Authority Source
+To prevent security vulnerabilities arising from stale JWT claims after a database role modification, the `JwtAuthenticationFilter` loads the `UserDetails` principal via `CustomUserDetailsService` against the authoritative database entity on each authenticated request.
+
+### 11.5 Foundation for Resource-Level Authorization (Phase 5+)
+The `AuthorizationService` bean provides programmatic and SpEL-compatible methods (`hasRole`, `hasAnyRole`, `isAdmin`, `isCurrentUser`, `canAccessIncident`) establishing a clean architectural foundation for Phase 5 incident-level ownership checks (e.g., employee viewing own tickets, engineer viewing assigned tickets, manager viewing team tickets).
+
