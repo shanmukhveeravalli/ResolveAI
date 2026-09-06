@@ -85,6 +85,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethodArgumentTypeMismatchException(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("BAD_REQUEST")
+                .message(String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName()))
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(EmailAlreadyExistsException.class)
     public ResponseEntity<ApiErrorResponse> handleEmailAlreadyExistsException(
             EmailAlreadyExistsException ex, HttpServletRequest request) {

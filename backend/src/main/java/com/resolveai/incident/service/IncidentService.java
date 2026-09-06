@@ -17,8 +17,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import com.resolveai.notification.entity.NotificationType;
+import com.resolveai.notification.service.NotificationService;
 import com.resolveai.sla.entity.SlaRecord;
 import com.resolveai.sla.service.SlaService;
+import com.resolveai.team.entity.Team;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +63,7 @@ public class IncidentService {
     private final IncidentCommentService incidentCommentService;
     private final AuthorizationService authorizationService;
     private final SlaService slaService;
+    private final NotificationService notificationService;
 
     /**
      * Creates a new incident, assigns the authenticated user as the reporter, and logs creation audit.
@@ -96,6 +100,14 @@ public class IncidentService {
         incidentHistoryService.recordHistory(saved, reporter, "CREATED", "incident", null, saved.getIncidentNumber());
 
         SlaRecord slaRecord = slaService.createSlaRecordForIncident(saved);
+
+        notificationService.createNotification(
+                reporter,
+                NotificationType.INCIDENT_CREATED,
+                "Incident Created: " + saved.getIncidentNumber(),
+                "Your incident '" + saved.getTitle() + "' has been created with priority " + saved.getPriority() + ".",
+                saved.getId()
+        );
 
         return IncidentResponse.fromEntity(saved, slaRecord);
     }
@@ -299,6 +311,14 @@ public class IncidentService {
 
         incidentHistoryService.recordHistory(saved, actor, "ASSIGNED", "assignee", oldAssigneeName, historyNote);
 
+        notificationService.createNotification(
+                engineer,
+                NotificationType.INCIDENT_ASSIGNED,
+                "Incident Assigned: " + saved.getIncidentNumber(),
+                "You have been assigned to incident '" + saved.getTitle() + "' with priority " + saved.getPriority() + ".",
+                saved.getId()
+        );
+
         log.info("Incident ID {} assigned to engineer {} by {}", id, engineer.getEmail(), actor.getEmail());
         SlaRecord slaRecord = slaService.findSlaRecordByIncidentId(saved.getId()).orElse(null);
         return IncidentResponse.fromEntity(saved, slaRecord);
@@ -346,6 +366,8 @@ public class IncidentService {
 
         incidentHistoryService.recordHistory(saved, actor, "STATUS_CHANGE", "status", oldStatus.name(), request.getStatus().name());
 
+        sendStatusChangeNotifications(saved, oldStatus, request.getStatus(), actor);
+
         if (request.getComment() != null && !request.getComment().isBlank()) {
             incidentCommentService.addComment(id,
                     IncidentCommentCreateRequest.builder().commentText(request.getComment().trim()).isInternal(false).build(),
@@ -355,6 +377,56 @@ public class IncidentService {
         log.info("Incident ID {} status transitioned from {} to {} by {}", id, oldStatus, request.getStatus(), actor.getEmail());
         SlaRecord slaRecord = slaService.findSlaRecordByIncidentId(saved.getId()).orElse(null);
         return IncidentResponse.fromEntity(saved, slaRecord);
+    }
+
+    private void sendStatusChangeNotifications(Incident incident, IncidentStatus oldStatus, IncidentStatus newStatus, User actor) {
+        User reporter = incident.getReporter();
+        User assignee = incident.getAssignee();
+        Team team = incident.getTeam();
+
+        if (newStatus == IncidentStatus.RESOLVED) {
+            String title = "Incident Resolved: " + incident.getIncidentNumber();
+            String msg = "Incident '" + incident.getTitle() + "' has been resolved.";
+            if (reporter != null && !reporter.getId().equals(actor.getId())) {
+                notificationService.createNotification(reporter, NotificationType.INCIDENT_RESOLVED, title, msg, incident.getId());
+            }
+            if (assignee != null && !assignee.getId().equals(actor.getId())) {
+                notificationService.createNotification(assignee, NotificationType.INCIDENT_RESOLVED, title, msg, incident.getId());
+            }
+        } else if (newStatus == IncidentStatus.REOPENED) {
+            String title = "Incident Reopened: " + incident.getIncidentNumber();
+            String msg = "Incident '" + incident.getTitle() + "' has been reopened.";
+            if (assignee != null && !assignee.getId().equals(actor.getId())) {
+                notificationService.createNotification(assignee, NotificationType.INCIDENT_REOPENED, title, msg, incident.getId());
+            } else if (team != null && team.getLeadUser() != null && !team.getLeadUser().getId().equals(actor.getId())) {
+                notificationService.createNotification(team.getLeadUser(), NotificationType.INCIDENT_REOPENED, title, msg, incident.getId());
+            }
+            if (reporter != null && !reporter.getId().equals(actor.getId())) {
+                notificationService.createNotification(reporter, NotificationType.INCIDENT_REOPENED, title, msg, incident.getId());
+            }
+        } else if (newStatus == IncidentStatus.ESCALATED) {
+            String title = "Incident Escalated: " + incident.getIncidentNumber();
+            String msg = "Incident '" + incident.getTitle() + "' has been escalated.";
+            if (assignee != null && !assignee.getId().equals(actor.getId())) {
+                notificationService.createNotification(assignee, NotificationType.INCIDENT_ESCALATED, title, msg, incident.getId());
+            }
+            if (reporter != null && !reporter.getId().equals(actor.getId())) {
+                notificationService.createNotification(reporter, NotificationType.INCIDENT_ESCALATED, title, msg, incident.getId());
+            }
+            if (team != null && team.getLeadUser() != null && !team.getLeadUser().getId().equals(actor.getId())
+                    && (assignee == null || !assignee.getId().equals(team.getLeadUser().getId()))) {
+                notificationService.createNotification(team.getLeadUser(), NotificationType.INCIDENT_ESCALATED, title, msg, incident.getId());
+            }
+        } else {
+            String title = "Incident Status Updated: " + incident.getIncidentNumber();
+            String msg = "Incident '" + incident.getTitle() + "' status changed from " + oldStatus + " to " + newStatus + ".";
+            if (reporter != null && !reporter.getId().equals(actor.getId())) {
+                notificationService.createNotification(reporter, NotificationType.INCIDENT_STATUS_CHANGED, title, msg, incident.getId());
+            }
+            if (assignee != null && !assignee.getId().equals(actor.getId())) {
+                notificationService.createNotification(assignee, NotificationType.INCIDENT_STATUS_CHANGED, title, msg, incident.getId());
+            }
+        }
     }
 
     /**

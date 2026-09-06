@@ -3,6 +3,8 @@ package com.resolveai.team.service;
 import com.resolveai.auth.security.RoleConstants;
 import com.resolveai.common.exception.DuplicateResourceException;
 import com.resolveai.common.exception.ResourceNotFoundException;
+import com.resolveai.notification.entity.NotificationType;
+import com.resolveai.notification.service.NotificationService;
 import com.resolveai.team.dto.*;
 import com.resolveai.team.entity.Team;
 import com.resolveai.team.entity.TeamMember;
@@ -28,6 +30,7 @@ public class TeamService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     /**
      * Creates a new team with unique name validation and optional lead user assignment.
@@ -166,6 +169,14 @@ public class TeamService {
             user.setTeam(team);
             userRepository.save(user);
         }
+
+        notificationService.createNotification(
+                user,
+                NotificationType.TEAM_ASSIGNMENT,
+                "Team Assignment: " + team.getName(),
+                "You have been added to team " + team.getName() + ".",
+                team.getId()
+        );
 
         log.info("User {} added to team {} (team_member ID: {})", user.getEmail(), team.getName(), saved.getId());
         return TeamMemberResponse.fromEntity(saved);

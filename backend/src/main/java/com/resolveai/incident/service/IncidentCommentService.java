@@ -9,6 +9,8 @@ import com.resolveai.incident.entity.Incident;
 import com.resolveai.incident.entity.IncidentComment;
 import com.resolveai.incident.repository.IncidentCommentRepository;
 import com.resolveai.incident.repository.IncidentRepository;
+import com.resolveai.notification.entity.NotificationType;
+import com.resolveai.notification.service.NotificationService;
 import com.resolveai.user.entity.User;
 import com.resolveai.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ public class IncidentCommentService {
     private final IncidentRepository incidentRepository;
     private final UserRepository userRepository;
     private final AuthorizationService authorizationService;
+    private final NotificationService notificationService;
 
     /**
      * Adds a comment to an incident.
@@ -66,6 +69,32 @@ public class IncidentCommentService {
 
         IncidentComment saved = incidentCommentRepository.save(comment);
         log.info("Comment ID {} added to incident ID {} by user {}", saved.getId(), incidentId, author.getEmail());
+
+        String notifTitle = "New Comment on Incident: " + incident.getIncidentNumber();
+        String notifMsg = String.format("A new comment was added to incident '%s' by %s %s.",
+                incident.getTitle(), author.getFirstName(), author.getLastName());
+
+        // Notify reporter if not internal and reporter is not the author
+        if (!isInternal && incident.getReporter() != null && !incident.getReporter().getId().equals(author.getId())) {
+            notificationService.createNotification(
+                    incident.getReporter(),
+                    NotificationType.INCIDENT_COMMENT_ADDED,
+                    notifTitle,
+                    notifMsg,
+                    incident.getId()
+            );
+        }
+
+        // Notify assignee if assignee exists and is not the author
+        if (incident.getAssignee() != null && !incident.getAssignee().getId().equals(author.getId())) {
+            notificationService.createNotification(
+                    incident.getAssignee(),
+                    NotificationType.INCIDENT_COMMENT_ADDED,
+                    notifTitle,
+                    notifMsg,
+                    incident.getId()
+            );
+        }
 
         return IncidentCommentResponse.fromEntity(saved);
     }

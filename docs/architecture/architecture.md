@@ -232,12 +232,45 @@ sequenceDiagram
 
 ---
 
-## 9. In-App Notification System
+## 9. In-App Notification System (Phase 7 Implemented)
 
-- Event-driven using Spring's `ApplicationEventPublisher`.
-- Domain events: `IncidentAssignedEvent`, `IncidentStatusChangedEvent`, `CommentAddedEvent`, `SlaBreachedEvent`.
-- Handled by `@TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)` to ensure notifications are only generated if database transactions commit successfully.
-- Notifications stored in `notifications` table; unread counts polled or pushed via REST polling/WebSocket.
+### 9.1 Module Overview
+The `notification` module (`com.resolveai.notification`) provides transactional in-app notifications persisted to the relational database (`notifications` table). All operations are strictly authenticated and user-scoped.
+
+### 9.2 Core Components
+- **`Notification` Entity**: Maps to the PostgreSQL `notifications` table. Tracks recipient (`user_id`), notification type (`type`), title, message body, optional reference entity ID (`reference_id`), read state (`is_read`), creation timestamp (`created_at`), and read timestamp (`read_at`).
+- **`NotificationType`**: Enum defining enterprise business event triggers (`INCIDENT_CREATED`, `INCIDENT_ASSIGNED`, `INCIDENT_STATUS_CHANGED`, `INCIDENT_COMMENT_ADDED`, `INCIDENT_ESCALATED`, `INCIDENT_RESOLVED`, `INCIDENT_REOPENED`, `SLA_BREACHED`, `TEAM_ASSIGNMENT`).
+- **`NotificationRepository`**: Spring Data JPA repository providing indexed user queries:
+  - Paginated retrieval: `findByUserIdOrderByCreatedAtDesc`
+  - Unread list and count queries: `countByUserIdAndIsReadFalse`
+  - Duplicate detection: `existsByUserIdAndTypeAndReferenceId`
+  - Atomic bulk update: `@Modifying` JPQL `markAllAsReadForUser`
+- **`NotificationService`**: Centralized service handling notification creation, safe execution (protecting calling domain transactions from notification delivery failures), user-scoped retrieval, unread count caching queries, ownership-verified read marking, and bulk read marking.
+- **`NotificationController`**: REST API exposing user-scoped endpoints under `/api/notifications` (`GET /`, `GET /unread-count`, `PATCH /{id}/read`, `PATCH /read-all`).
+
+### 9.3 Entity & Ownership Relationships
+- **`User` → `Notification`**: One-to-Many relationship (`@ManyToOne` from `Notification` to `User` via foreign key `user_id`).
+- **Security & Authorization**: All notification retrieval and update operations verify the authenticated principal. Endpoints reject arbitrary `userId` parameters; attempting to access or modify notifications belonging to another user results in HTTP `403 Forbidden`.
+
+### 9.4 Event Integration Flows
+1. **Incident Creation**:
+   - `IncidentService.createIncident` → Generates `INCIDENT_CREATED` notification to the reporting user with ticket reference.
+2. **Incident Assignment**:
+   - `IncidentService.assignIncident` → Generates `INCIDENT_ASSIGNED` notification to the assigned engineer.
+3. **Incident Lifecycle Transitions**:
+   - `IncidentService.updateStatus` → Generates granular event notifications:
+     - Transition to `RESOLVED` → `INCIDENT_RESOLVED` sent to reporter and assignee.
+     - Transition to `REOPENED` → `INCIDENT_REOPENED` sent to assignee, team lead, and reporter.
+     - Transition to `ESCALATED` → `INCIDENT_ESCALATED` sent to assignee, team lead, and reporter.
+     - Other transitions (`IN_PROGRESS`, `TRIAGED`, `CLOSED`) → `INCIDENT_STATUS_CHANGED` sent to reporter and assignee.
+     - Actor exclusion: Actors never receive self-notifications for their own status actions.
+4. **Incident Comments**:
+   - `IncidentCommentService.addComment` → Generates `INCIDENT_COMMENT_ADDED` notifications to relevant ticket participants. Comment author is suppressed from receiving self-notifications. Internal investigation notes do not notify external employee reporters.
+5. **SLA Breach Monitoring**:
+   - `SlaService.recordResponse`, `SlaService.recordResolution`, and `scanAndEvaluateActiveBreaches` → When an SLA target deadline is exceeded, `SLA_BREACHED` notifications are dispatched to the assigned engineer or reporter.
+   - Duplicate prevention query (`existsByUserIdAndTypeAndReferenceId`) ensures repeated breach evaluations remain idempotent.
+6. **Team Assignment**:
+   - `TeamService.addTeamMember` → Generates `TEAM_ASSIGNMENT` notification to the newly added engineer/employee.
 
 ---
 

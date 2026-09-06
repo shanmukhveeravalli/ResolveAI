@@ -2,11 +2,15 @@ package com.resolveai.sla.service;
 
 import com.resolveai.common.exception.ResourceNotFoundException;
 import com.resolveai.incident.entity.Incident;
+import com.resolveai.notification.entity.NotificationType;
+import com.resolveai.notification.repository.NotificationRepository;
+import com.resolveai.notification.service.NotificationService;
 import com.resolveai.sla.dto.SlaRecordResponse;
 import com.resolveai.sla.entity.SlaPolicy;
 import com.resolveai.sla.entity.SlaRecord;
 import com.resolveai.sla.repository.SlaPolicyRepository;
 import com.resolveai.sla.repository.SlaRecordRepository;
+import com.resolveai.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +31,8 @@ public class SlaService {
 
     private final SlaRecordRepository slaRecordRepository;
     private final SlaPolicyRepository slaPolicyRepository;
+    private final NotificationService notificationService;
+    private final NotificationRepository notificationRepository;
 
     /**
      * Determines applicable SLA policy for the incident's priority, calculates response/resolution deadlines,
@@ -86,6 +92,7 @@ public class SlaService {
                     record.setIsResponseBreached(true);
                     log.warn("SLA Response breached for incident ID {}. Due: {}, Responded: {}",
                             incident.getId(), record.getResponseDueAt(), responseTime);
+                    notifySlaBreach(incident, "Response SLA target has been breached");
                 } else {
                     log.info("SLA Response met for incident ID {}. Due: {}, Responded: {}",
                             incident.getId(), record.getResponseDueAt(), responseTime);
@@ -114,6 +121,7 @@ public class SlaService {
                 record.setIsResolutionBreached(true);
                 log.warn("SLA Resolution breached for incident ID {}. Due: {}, Resolved: {}",
                         incident.getId(), record.getResolutionDueAt(), resolutionTime);
+                notifySlaBreach(incident, "Resolution SLA target has been breached");
             } else {
                 log.info("SLA Resolution met for incident ID {}. Due: {}, Resolved: {}",
                         incident.getId(), record.getResolutionDueAt(), resolutionTime);
@@ -174,6 +182,9 @@ public class SlaService {
                 .findByIsResponseBreachedFalseAndRespondedAtIsNullAndResponseDueAtBefore(now);
         for (SlaRecord r : responseBreaches) {
             r.setIsResponseBreached(true);
+            if (r.getIncident() != null) {
+                notifySlaBreach(r.getIncident(), "Response SLA target has been breached");
+            }
         }
         if (!responseBreaches.isEmpty()) {
             slaRecordRepository.saveAll(responseBreaches);
@@ -184,10 +195,33 @@ public class SlaService {
                 .findByIsResolutionBreachedFalseAndResolvedAtIsNullAndResolutionDueAtBefore(now);
         for (SlaRecord r : resolutionBreaches) {
             r.setIsResolutionBreached(true);
+            if (r.getIncident() != null) {
+                notifySlaBreach(r.getIncident(), "Resolution SLA target has been breached");
+            }
         }
         if (!resolutionBreaches.isEmpty()) {
             slaRecordRepository.saveAll(resolutionBreaches);
             log.warn("Flagged {} overdue resolution SLA breaches at {}", resolutionBreaches.size(), now);
+        }
+    }
+
+    private void notifySlaBreach(Incident incident, String breachType) {
+        if (incident == null) {
+            return;
+        }
+        User target = incident.getAssignee() != null ? incident.getAssignee() : incident.getReporter();
+        if (target != null) {
+            boolean alreadyNotified = notificationRepository.existsByUserIdAndTypeAndReferenceId(
+                    target.getId(), NotificationType.SLA_BREACHED.name(), incident.getId());
+            if (!alreadyNotified) {
+                notificationService.createNotification(
+                        target,
+                        NotificationType.SLA_BREACHED,
+                        "SLA Breached: " + incident.getIncidentNumber(),
+                        breachType + " for incident '" + incident.getTitle() + "'.",
+                        incident.getId()
+                );
+            }
         }
     }
 

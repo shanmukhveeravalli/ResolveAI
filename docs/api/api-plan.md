@@ -648,4 +648,88 @@ Endpoints demonstrating explicit method-level authorization (`@PreAuthorize`) an
 - **Response `403 Forbidden`**: Caller lacks permission to view the incident.
 - **Response `404 Not Found`**: Incident or SLA record not found.
 
+---
+
+### 3.12 In-App Notifications (`/api/notifications`)
+
+All notification endpoints are strictly scoped to the authenticated user derived from the security principal. Arbitrary user query parameters are rejected.
+
+#### `GET /api/notifications`
+- **Access**: Authenticated (`EMPLOYEE`, `ENGINEER`, `MANAGER`, `ADMIN`)
+- **Description**: Retrieves paginated in-app notifications for the currently authenticated user, ordered by creation date descending.
+- **Query Parameters**:
+  - `page` (integer, optional, default: 0)
+  - `size` (integer, optional, default: 20)
+- **Response `200 OK`**: `PageResponse<NotificationResponse>`
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "type": "INCIDENT_ASSIGNED",
+      "title": "Incident Assigned: INC-20260906-1234",
+      "message": "You have been assigned to incident 'Database connectivity issues' with priority P1.",
+      "referenceId": 42,
+      "isRead": false,
+      "read": false,
+      "createdAt": "2026-09-06T10:15:30Z",
+      "readAt": null
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1,
+  "first": true,
+  "last": true,
+  "empty": false
+}
+```
+- **Response `401 Unauthorized`**: Missing or invalid authentication token.
+
+#### `GET /api/notifications/unread-count`
+- **Access**: Authenticated (`EMPLOYEE`, `ENGINEER`, `MANAGER`, `ADMIN`)
+- **Description**: Returns the count of unread notifications for the currently authenticated user.
+- **Response `200 OK`**: `NotificationCountResponse`
+```json
+{
+  "count": 5
+}
+```
+- **Response `401 Unauthorized`**: Missing or invalid authentication token.
+
+#### `PATCH /api/notifications/{id}/read`
+- **Access**: Authenticated (User must own the target notification)
+- **Description**: Marks a specific notification as read. Sets `isRead` to true and populates `readAt` with the current UTC timestamp. Repeated calls are safe and idempotent.
+- **Response `200 OK`**: `NotificationResponse`
+```json
+{
+  "id": 1,
+  "type": "INCIDENT_ASSIGNED",
+  "title": "Incident Assigned: INC-20260906-1234",
+  "message": "You have been assigned to incident 'Database connectivity issues' with priority P1.",
+  "referenceId": 42,
+  "isRead": true,
+  "read": true,
+  "createdAt": "2026-09-06T10:15:30Z",
+  "readAt": "2026-09-06T10:30:00Z"
+}
+```
+- **Response `401 Unauthorized`**: Missing or invalid authentication token.
+- **Response `403 Forbidden`**: Notification exists but belongs to a different user.
+- **Response `404 Not Found`**: Notification with the specified ID does not exist.
+
+#### `PATCH /api/notifications/read-all`
+- **Access**: Authenticated (`EMPLOYEE`, `ENGINEER`, `MANAGER`, `ADMIN`)
+- **Description**: Bulk marks all unread notifications for the currently authenticated user as read. Notifications belonging to other users remain completely unchanged.
+- **Response `200 OK`**: `MarkAllReadResponse`
+```json
+{
+  "updatedCount": 4,
+  "message": "All unread notifications marked as read"
+}
+```
+- **Response `401 Unauthorized`**: Missing or invalid authentication token.
+
+
 
