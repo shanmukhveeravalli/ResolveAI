@@ -17,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import com.resolveai.sla.entity.SlaRecord;
+import com.resolveai.sla.service.SlaService;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -57,6 +59,7 @@ public class IncidentService {
     private final IncidentHistoryService incidentHistoryService;
     private final IncidentCommentService incidentCommentService;
     private final AuthorizationService authorizationService;
+    private final SlaService slaService;
 
     /**
      * Creates a new incident, assigns the authenticated user as the reporter, and logs creation audit.
@@ -92,7 +95,9 @@ public class IncidentService {
 
         incidentHistoryService.recordHistory(saved, reporter, "CREATED", "incident", null, saved.getIncidentNumber());
 
-        return IncidentResponse.fromEntity(saved);
+        SlaRecord slaRecord = slaService.createSlaRecordForIncident(saved);
+
+        return IncidentResponse.fromEntity(saved, slaRecord);
     }
 
     /**
@@ -107,7 +112,8 @@ public class IncidentService {
             throw new AccessDeniedException("Access denied: insufficient permissions to access incident ID: " + id);
         }
 
-        return IncidentResponse.fromEntity(incident);
+        SlaRecord slaRecord = slaService.findSlaRecordByIncidentId(id).orElse(null);
+        return IncidentResponse.fromEntity(incident, slaRecord);
     }
 
     /**
@@ -285,6 +291,8 @@ public class IncidentService {
 
         Incident saved = incidentRepository.save(incident);
 
+        slaService.recordResponse(saved, Instant.now());
+
         String historyNote = request.getAssignmentReason() != null && !request.getAssignmentReason().isBlank()
                 ? newAssigneeName + " (Reason: " + request.getAssignmentReason().trim() + ")"
                 : newAssigneeName;
@@ -292,7 +300,8 @@ public class IncidentService {
         incidentHistoryService.recordHistory(saved, actor, "ASSIGNED", "assignee", oldAssigneeName, historyNote);
 
         log.info("Incident ID {} assigned to engineer {} by {}", id, engineer.getEmail(), actor.getEmail());
-        return IncidentResponse.fromEntity(saved);
+        SlaRecord slaRecord = slaService.findSlaRecordByIncidentId(saved.getId()).orElse(null);
+        return IncidentResponse.fromEntity(saved, slaRecord);
     }
 
     /**
@@ -325,6 +334,16 @@ public class IncidentService {
 
         Incident saved = incidentRepository.save(incident);
 
+        if (request.getStatus() == IncidentStatus.RESOLVED) {
+            slaService.recordResolution(saved, saved.getResolvedAt());
+        } else if (request.getStatus() == IncidentStatus.REOPENED) {
+            slaService.recordReopen(saved);
+        } else if (request.getStatus() == IncidentStatus.TRIAGED ||
+                   request.getStatus() == IncidentStatus.ASSIGNED ||
+                   request.getStatus() == IncidentStatus.IN_PROGRESS) {
+            slaService.recordResponse(saved, Instant.now());
+        }
+
         incidentHistoryService.recordHistory(saved, actor, "STATUS_CHANGE", "status", oldStatus.name(), request.getStatus().name());
 
         if (request.getComment() != null && !request.getComment().isBlank()) {
@@ -334,7 +353,8 @@ public class IncidentService {
         }
 
         log.info("Incident ID {} status transitioned from {} to {} by {}", id, oldStatus, request.getStatus(), actor.getEmail());
-        return IncidentResponse.fromEntity(saved);
+        SlaRecord slaRecord = slaService.findSlaRecordByIncidentId(saved.getId()).orElse(null);
+        return IncidentResponse.fromEntity(saved, slaRecord);
     }
 
     /**

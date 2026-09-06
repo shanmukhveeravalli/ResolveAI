@@ -297,13 +297,20 @@ Consistent across all backend exceptions:
 ### 3.4 Teams (`/api/teams`)
 
 #### `GET /api/teams`
+- **Access**: Authenticated (`EMPLOYEE`, `ENGINEER`, `MANAGER`, `ADMIN`)
+- **Description**: Lists active teams or all teams based on filter, including current member count.
+- **Query Parameters**: `activeOnly` (boolean, default false)
+- **Response `200 OK`**: `ApiResponse<List<TeamResponse>>`
+
+#### `GET /api/teams/{id}`
 - **Access**: Authenticated
-- **Description**: Lists active teams and assigned lead engineers.
-- **Response `200 OK`**: List of `TeamDTO`.
+- **Description**: Returns detailed team attributes, assigned lead engineer, and roster size.
+- **Response `200 OK`**: `ApiResponse<TeamResponse>`
+- **Response `404 Not Found`**: When team ID does not exist.
 
 #### `POST /api/teams`
-- **Access**: `ADMIN`
-- **Description**: Creates a new engineering or operations squad.
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Creates a new engineering or operations squad with optional lead assignment.
 - **Request Body**:
 ```json
 {
@@ -312,12 +319,55 @@ Consistent across all backend exceptions:
   "leadUserId": 7
 }
 ```
-- **Response `201 Created`**: `TeamDTO`.
+- **Response `201 Created`**: `ApiResponse<TeamResponse>`
+- **Response `400 Bad Request`**: Validation failure (missing name, name length, invalid/inactive lead user).
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `409 Conflict`**: Team name already exists.
 
-#### `GET /api/teams/{id}`
+#### `PUT /api/teams/{id}`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Modifies team attributes (name, description, lead engineer, active status).
+- **Request Body**:
+```json
+{
+  "name": "Database Reliability Squad",
+  "description": "Updated squad description.",
+  "leadUserId": 8,
+  "isActive": true
+}
+```
+- **Response `200 OK`**: `ApiResponse<TeamResponse>`
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `404 Not Found`**: Team or lead user does not exist.
+- **Response `409 Conflict`**: New team name conflicts with an existing team.
+
+#### `GET /api/teams/{id}/members`
 - **Access**: Authenticated
-- **Description**: Returns team details, roster members, and current active incident count.
-- **Response `200 OK`**: `TeamDetailDTO`.
+- **Description**: Lists all members assigned to the specified team.
+- **Response `200 OK`**: `ApiResponse<List<TeamMemberResponse>>`
+- **Response `404 Not Found`**: When team does not exist.
+
+#### `POST /api/teams/{id}/members`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Adds a user to the team roster and synchronizes user primary team.
+- **Request Body**:
+```json
+{
+  "userId": 12
+}
+```
+- **Response `201 Created`**: `ApiResponse<TeamMemberResponse>`
+- **Response `400 Bad Request`**: Cannot add inactive user.
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `404 Not Found`**: Team or user not found.
+- **Response `409 Conflict`**: User is already a member of the team.
+
+#### `DELETE /api/teams/{id}/members/{userId}`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Removes a member from the team roster. Preserves the user entity.
+- **Response `200 OK`**: `ApiResponse<Void>`
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `404 Not Found`**: Team, user, or membership join not found.
 
 ---
 
@@ -515,4 +565,87 @@ Endpoints demonstrating explicit method-level authorization (`@PreAuthorize`) an
 #### Security & Error Semantics:
 - `401 Unauthorized`: Unauthenticated request (missing, invalid, or expired JWT).
 - `403 Forbidden`: Authenticated request from a user lacking the requisite role. Emits standard `ApiErrorResponse` envelope.
+
+---
+
+### 3.11 Service Level Agreements (`/api/sla`)
+
+#### `GET /api/sla/policies`
+- **Access**: Authenticated (`EMPLOYEE`, `ENGINEER`, `MANAGER`, `ADMIN`)
+- **Description**: Retrieves all configured SLA policies, optionally filtering to active policies only.
+- **Query Parameters**: `activeOnly` (boolean, default false)
+- **Response `200 OK`**: `ApiResponse<List<SlaPolicyResponse>>`
+
+#### `GET /api/sla/policies/{id}`
+- **Access**: Authenticated
+- **Description**: Retrieves details of a specific SLA policy by ID.
+- **Response `200 OK`**: `ApiResponse<SlaPolicyResponse>`
+- **Response `404 Not Found`**: Policy ID does not exist.
+
+#### `POST /api/sla/policies`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Creates a new SLA policy with configurable response, resolution, and escalation thresholds.
+- **Request Body**:
+```json
+{
+  "name": "Custom Urgent SLA",
+  "priority": "P1",
+  "responseTimeMinutes": 10,
+  "resolutionTimeMinutes": 60,
+  "escalationThresholdMinutes": 30,
+  "isActive": true
+}
+```
+- **Response `201 Created`**: `ApiResponse<SlaPolicyResponse>`
+- **Response `400 Bad Request`**: Validation failure (resolution target < response target, negative durations, invalid priority).
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `409 Conflict`**: Policy for priority tier already exists.
+
+#### `PUT /api/sla/policies/{id}`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Updates targets and active status of an existing SLA policy.
+- **Request Body**:
+```json
+{
+  "name": "Updated Critical SLA",
+  "responseTimeMinutes": 20,
+  "resolutionTimeMinutes": 120,
+  "escalationThresholdMinutes": 60,
+  "isActive": true
+}
+```
+- **Response `200 OK`**: `ApiResponse<SlaPolicyResponse>`
+- **Response `400 Bad Request`**: Validation failure (resolution target < response target).
+- **Response `403 Forbidden`**: Caller lacks MANAGER/ADMIN role.
+- **Response `404 Not Found`**: Policy ID not found.
+
+#### `GET /api/sla/records/incident/{incidentId}`
+- **Access**: Authenticated (Subject to incident resource-level access control)
+- **Description**: Retrieves the SLA record, deadlines, compliance status, and breach flags for a specific incident.
+- **Response `200 OK`**: `ApiResponse<SlaRecordResponse>`
+```json
+{
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": {
+    "id": 101,
+    "incidentId": 14,
+    "incidentNumber": "INC-20260905-0101",
+    "slaPolicyId": 1,
+    "slaPolicyName": "Critical Priority SLA (P1)",
+    "priority": "P1",
+    "responseDueAt": "2026-09-05T13:45:00Z",
+    "resolutionDueAt": "2026-09-05T15:30:00Z",
+    "respondedAt": "2026-09-05T13:40:00Z",
+    "resolvedAt": null,
+    "isResponseBreached": false,
+    "isResolutionBreached": false,
+    "isBreached": false,
+    "createdAt": "2026-09-05T13:30:00Z"
+  }
+}
+```
+- **Response `403 Forbidden`**: Caller lacks permission to view the incident.
+- **Response `404 Not Found`**: Incident or SLA record not found.
+
 

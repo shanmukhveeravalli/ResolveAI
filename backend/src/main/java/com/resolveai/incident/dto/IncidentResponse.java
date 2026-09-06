@@ -50,7 +50,13 @@ public class IncidentResponse {
     private Instant createdAt;
     private Instant updatedAt;
 
+    private com.resolveai.sla.dto.SlaRecordResponse sla;
+
     public static IncidentResponse fromEntity(Incident incident) {
+        return fromEntity(incident, null);
+    }
+
+    public static IncidentResponse fromEntity(Incident incident, com.resolveai.sla.entity.SlaRecord slaRecord) {
         if (incident == null) {
             return null;
         }
@@ -89,6 +95,10 @@ public class IncidentResponse {
         if (incident.getTeam() != null) {
             builder.teamId(incident.getTeam().getId())
                     .teamName(incident.getTeam().getName());
+        }
+
+        if (slaRecord != null) {
+            builder.sla(com.resolveai.sla.dto.SlaRecordResponse.fromEntity(slaRecord));
         }
 
         return builder.build();

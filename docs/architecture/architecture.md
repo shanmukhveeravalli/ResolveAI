@@ -163,8 +163,8 @@ Every state change or assignee mutation triggers an immutable `IncidentHistory` 
 | **View Knowledge Base** | Yes (Published) | Yes (All) | Yes (All) | Yes (All) |
 | **Manage Knowledge Articles** | No | Yes (Create/Edit) | Yes | Yes |
 | **View Team Analytics & SLA** | No | No | Yes | Yes |
-| **Configure SLA Policies** | No | No | No | Yes |
-| **User & Team Administration** | No | No | No | Yes |
+| **Configure SLA Policies** | No | No | Yes | Yes |
+| **User & Team Administration** | No | No | Yes (Teams) | Yes |
 | **View System Audit Logs** | No | No | No | Yes |
 
 ### 6.3 Resource-Level Security
@@ -186,11 +186,10 @@ SLA rules are never hardcoded. They are dynamically driven by the `sla_policies`
 
 ### SLA Lifecycle Engine
 1. **Creation**: Determine priority → Match active policy → Calculate `response_due_at = created_at + response_time` and `resolution_due_at = created_at + resolution_time` → Persist `sla_records`.
-2. **First Response**: First engineer status update (`IN_PROGRESS`) or engineer comment stamps `responded_at`.
-3. **Resolution**: Transition to `RESOLVED` stamps `resolved_at`.
-4. **Breach Monitor**: Scheduled task running every 60 seconds evaluates pending records:
-   - If `responded_at IS NULL` and `NOW() > response_due_at` → Flag `is_response_breached = TRUE`, trigger warning notification.
-   - If `status != RESOLVED` and `NOW() > resolution_due_at` → Flag `is_resolution_breached = TRUE`, trigger breach escalation.
+2. **First Response**: First engineer status update (`TRIAGED`, `ASSIGNED`, `IN_PROGRESS`) or explicit assignment stamps `responded_at`. If `responded_at > response_due_at`, flags `is_response_breached = TRUE`.
+3. **Resolution**: Transition to `RESOLVED` stamps `resolved_at`. If `resolved_at > resolution_due_at`, flags `is_resolution_breached = TRUE`. Reopening ticket resets `resolved_at`.
+4. **Closure**: Transition to `CLOSED` preserves terminal SLA audit state.
+5. **Breach Evaluation**: Service-level evaluation (`SlaService.scanAndEvaluateActiveBreaches`) checks overdue pending tickets against current reference time. Background scheduling will be added in operational phases.
 
 ---
 
