@@ -461,35 +461,151 @@ Consistent across all backend exceptions:
 
 ### 3.7 Analytics (`/api/analytics`)
 
+Operational and management metrics derived directly from primary database tables using database-side aggregations (JPQL `COUNT`, `SUM(CASE WHEN ...)`, `GROUP BY`).
+All endpoints are secured and strictly restricted to `MANAGER` and `ADMIN` roles (`@PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")`).
+
 #### `GET /api/analytics/overview`
 - **Access**: `MANAGER`, `ADMIN`
-- **Description**: Real-time operational metrics derived directly from the database.
+- **Query Parameters**:
+  - `from` *(optional)*: Filter by incident creation timestamp (supports `YYYY-MM-DD` or ISO-8601 date-time string).
+  - `to` *(optional)*: Filter by incident creation timestamp (supports `YYYY-MM-DD` or ISO-8601 date-time string).
+- **Description**: Real-time aggregate count of incidents categorized by operational state.
 - **Response `200 OK`**:
 ```json
 {
-  "totalIncidents": 1420,
-  "openIncidents": 38,
-  "criticalIncidents": 3,
-  "resolvedIncidents": 1382,
-  "slaComplianceRate": 96.4,
-  "averageResolutionTimeMinutes": 142.5,
-  "incidentsByPriority": {
-    "P1": 18,
-    "P2": 112,
-    "P3": 680,
-    "P4": 610
-  },
-  "incidentsByStatus": {
-    "NEW": 5,
-    "TRIAGED": 4,
-    "ASSIGNED": 11,
-    "IN_PROGRESS": 18,
-    "RESOLVED": 1382
-  },
-  "teamWorkload": [
-    { "teamId": 2, "teamName": "Network Squad", "activeCount": 12, "criticalCount": 1 },
-    { "teamId": 3, "teamName": "Cloud Infra", "activeCount": 9, "criticalCount": 2 }
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": {
+    "totalIncidents": 1420,
+    "openIncidents": 38,
+    "resolvedIncidents": 1340,
+    "closedIncidents": 30,
+    "escalatedIncidents": 8,
+    "reopenedIncidents": 4
+  }
+}
+```
+- **Response `400 Bad Request`**: Invalid date format provided.
+- **Response `401 Unauthorized`**: Missing or invalid JWT authentication token.
+- **Response `403 Forbidden`**: Caller lacks `MANAGER` or `ADMIN` role.
+
+#### `GET /api/analytics/incidents/status`
+- **Access**: `MANAGER`, `ADMIN`
+- **Query Parameters**:
+  - `from` *(optional)*: Start date/datetime.
+  - `to` *(optional)*: End date/datetime.
+- **Description**: Incident counts grouped by lifecycle status (`NEW`, `TRIAGED`, `ASSIGNED`, `IN_PROGRESS`, `ESCALATED`, `RESOLVED`, `CLOSED`, `REOPENED`).
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": [
+    { "status": "NEW", "count": 12 },
+    { "status": "ASSIGNED", "count": 14 },
+    { "status": "IN_PROGRESS", "count": 12 },
+    { "status": "RESOLVED", "count": 1340 },
+    { "status": "CLOSED", "count": 30 },
+    { "status": "ESCALATED", "count": 8 },
+    { "status": "REOPENED", "count": 4 }
   ]
+}
+```
+
+#### `GET /api/analytics/incidents/priority`
+- **Access**: `MANAGER`, `ADMIN`
+- **Query Parameters**:
+  - `from` *(optional)*: Start date/datetime.
+  - `to` *(optional)*: End date/datetime.
+- **Description**: Incident counts grouped by priority tier (`P1`, `P2`, `P3`, `P4`).
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": [
+    { "priority": "P1", "count": 18 },
+    { "priority": "P2", "count": 112 },
+    { "priority": "P3", "count": 680 },
+    { "priority": "P4", "count": 610 }
+  ]
+}
+```
+
+#### `GET /api/analytics/incidents/severity`
+- **Access**: `MANAGER`, `ADMIN`
+- **Query Parameters**:
+  - `from` *(optional)*: Start date/datetime.
+  - `to` *(optional)*: End date/datetime.
+- **Description**: Incident counts grouped by impact severity (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`).
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": [
+    { "severity": "CRITICAL", "count": 22 },
+    { "severity": "HIGH", "count": 108 },
+    { "severity": "MEDIUM", "count": 750 },
+    { "severity": "LOW", "count": 540 }
+  ]
+}
+```
+
+#### `GET /api/analytics/teams/workload`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Distribution of currently open/assigned incidents across all configured teams.
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": [
+    { "teamId": 1, "teamName": "Core Infrastructure Squad", "assignedOpenIncidentCount": 6 },
+    { "teamId": 2, "teamName": "Application Support", "assignedOpenIncidentCount": 11 },
+    { "teamId": 3, "teamName": "Security Operations", "assignedOpenIncidentCount": 0 }
+  ]
+}
+```
+
+#### `GET /api/analytics/sla`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Aggregate SLA compliance metrics computed across all `SlaRecord` entries.
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": {
+    "totalSlaRecords": 1420,
+    "responseBreaches": 18,
+    "resolutionBreaches": 42,
+    "totalBreachedRecords": 54
+  }
+}
+```
+
+#### `GET /api/analytics/knowledge`
+- **Access**: `MANAGER`, `ADMIN`
+- **Description**: Knowledge base summary detailing total articles and breakdown by publication lifecycle status.
+- **Response `200 OK`**:
+```json
+{
+  "timestamp": "2026-09-07T10:00:00.000Z",
+  "status": 200,
+  "message": "Operation completed successfully",
+  "data": {
+    "totalArticles": 128,
+    "publishedArticles": 94,
+    "draftArticles": 22,
+    "archivedArticles": 12
+  }
 }
 ```
 

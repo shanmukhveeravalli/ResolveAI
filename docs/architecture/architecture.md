@@ -328,3 +328,27 @@ To prevent security vulnerabilities arising from stale JWT claims after a databa
 ### 11.5 Foundation for Resource-Level Authorization (Phase 5+)
 The `AuthorizationService` bean provides programmatic and SpEL-compatible methods (`hasRole`, `hasAnyRole`, `isAdmin`, `isCurrentUser`, `canAccessIncident`) establishing a clean architectural foundation for Phase 5 incident-level ownership checks (e.g., employee viewing own tickets, engineer viewing assigned tickets, manager viewing team tickets).
 
+---
+
+## 12. Analytics Module Architecture (Phase 9)
+
+Phase 9 implements an enterprise operational analytics engine computing real-time KPIs and management indicators directly from primary operational database tables:
+
+### 12.1 Database-Side Aggregation & Performance
+- **Zero Separate Analytics DB**: Operational data (`incidents`, `sla_records`, `knowledge_articles`, `teams`) is queried in-place without data warehouse duplication or secondary databases.
+- **Push-Down Aggregations**: All counts, groupings, and conditionally aggregated sums are executed entirely inside the PostgreSQL / RDBMS engine using JPQL queries:
+  - `COUNT(i)` and `SUM(CASE WHEN ... THEN 1 ELSE 0 END)` for multi-state overview counts in a single query roundtrip.
+  - JPQL constructor expressions (`SELECT new ...Response(i.status, COUNT(i)) GROUP BY i.status`) for status, priority, and severity breakdowns.
+  - SQL ad-hoc joins (`Team t LEFT JOIN Incident i ON i.team = t AND i.status IN (...) GROUP BY t.id, t.name`) to compute open incident workloads while ensuring idle teams are reported with zero counts.
+- **Zero In-Memory Entity Materialization**: No raw entity collections or incident lists are pulled into Java heap memory for counting.
+
+### 12.2 Security & Access Boundaries
+- Restricted exclusively to management roles (`MANAGER`, `ADMIN`) via class-level `@PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")`.
+- Unauthenticated requests trigger `401 Unauthorized`.
+- Non-management authenticated callers (`EMPLOYEE`, `ENGINEER`) trigger `403 Forbidden`.
+
+### 12.3 Flexible Temporal Scoping
+- Incident metrics support optional date range filters (`from` and `to`) evaluated against indexed `createdAt` timestamps.
+- Controllers accept both calendar date format (`YYYY-MM-DD`, parsed to UTC start/end of day) and precise ISO-8601 UTC date-time timestamps.
+
+
