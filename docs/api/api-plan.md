@@ -371,41 +371,69 @@ Consistent across all backend exceptions:
 
 ---
 
-### 3.5 Knowledge Base (`/api/knowledge`)
+### 3.5 Knowledge Base (`/api/knowledge/articles` and `/api/knowledge`)
 
-#### `GET /api/knowledge`
-- **Access**: Authenticated
-- **Description**: Searches and browses published knowledge base articles.
-- **Query Parameters**: `categoryId`, `search`, `tag`, `page`, `size`.
-- **Response `200 OK`**: Paginated `KnowledgeArticleSummaryDTO`.
+#### `GET /api/knowledge/articles` (alias `GET /api/knowledge`)
+- **Access**: Authenticated (`EMPLOYEE` sees only `PUBLISHED`; `ENGINEER` sees `PUBLISHED` or own; `MANAGER`/`ADMIN` sees all)
+- **Description**: Searches and browses knowledge base articles with database-backed search and category filtering.
+- **Query Parameters**: `categoryId` (Long), `search` (String), `status` (`DRAFT`, `PUBLISHED`, `ARCHIVED`), `page`, `size`, `sort`.
+- **Response `200 OK`**: Paginated `KnowledgeArticleResponse`.
 
-#### `POST /api/knowledge`
+#### `POST /api/knowledge/articles` (alias `POST /api/knowledge`)
 - **Access**: `ENGINEER`, `MANAGER`, `ADMIN`
-- **Description**: Creates a new knowledge base article.
+- **Description**: Creates a new knowledge base article in `DRAFT` status (or optionally `PUBLISHED`). The authenticated user is registered as the author.
 - **Request Body**:
 ```json
 {
   "title": "VPN Gateway Routing Collision Resolution",
+  "content": "Flush edge router BGP peers using 'clear ip bgp * soft' and verify default route.",
   "problem": "Pulse Secure client hangs at 'Connecting (82%)'.",
   "symptoms": "Gateway timeout in logs, ICMP unreachable.",
   "rootCause": "BGP route table desync on primary edge router.",
   "resolution": "Flush edge router BGP peers using 'clear ip bgp * soft' and verify default route.",
   "categoryId": 3,
   "tags": "vpn,network,firewall,pulse-secure",
-  "status": "PUBLISHED"
+  "status": "DRAFT"
 }
 ```
-- **Response `201 Created`**: `KnowledgeArticleDetailDTO`.
+- **Response `201 Created`**: `KnowledgeArticleResponse`.
 
-#### `GET /api/knowledge/{id}`
-- **Access**: Authenticated
-- **Description**: Retrieves full article details with problem, symptoms, root cause, and resolution.
-- **Response `200 OK`**: `KnowledgeArticleDetailDTO`.
+#### `GET /api/knowledge/articles/{id}` (alias `GET /api/knowledge/{id}`)
+- **Access**: Authenticated (Subject to role visibility rules: `PUBLISHED` visible to all; `DRAFT`/`ARCHIVED` restricted to author or `MANAGER`/`ADMIN`)
+- **Description**: Retrieves full article details.
+- **Response `200 OK`**: `KnowledgeArticleResponse`.
 
-#### `PUT /api/knowledge/{id}`
-- **Access**: `ENGINEER`, `MANAGER`, `ADMIN`
-- **Description**: Updates article content, taxonomy, or publication status.
-- **Response `200 OK`**: Updated `KnowledgeArticleDetailDTO`.
+#### `PUT /api/knowledge/articles/{id}` (alias `PUT /api/knowledge/{id}`)
+- **Access**: Author `ENGINEER`, `MANAGER`, `ADMIN`
+- **Description**: Updates article content, taxonomy, tags, or publication lifecycle status.
+- **Response `200 OK`**: Updated `KnowledgeArticleResponse`.
+
+#### `PATCH /api/knowledge/articles/{id}/publish`
+- **Access**: Author `ENGINEER`, `MANAGER`, `ADMIN`
+- **Description**: Transitions article from `DRAFT` to `PUBLISHED` and populates `publishedAt` timestamp.
+- **Response `200 OK`**: Updated `KnowledgeArticleResponse`.
+
+#### `PATCH /api/knowledge/articles/{id}/archive`
+- **Access**: Author `ENGINEER`, `MANAGER`, `ADMIN`
+- **Description**: Transitions article from `DRAFT` or `PUBLISHED` to `ARCHIVED`.
+- **Response `200 OK`**: Updated `KnowledgeArticleResponse`.
+
+#### Incident ↔ Knowledge Linking (`/api/incidents/{incidentId}/knowledge`)
+
+##### `POST /api/incidents/{incidentId}/knowledge/{articleId}`
+- **Access**: Authenticated (Requires incident access and article visibility)
+- **Description**: Creates a relational link between an incident and a knowledge article. Prevents duplicate links.
+- **Response `201 Created`**: `IncidentKnowledgeLinkResponse`.
+
+##### `DELETE /api/incidents/{incidentId}/knowledge/{articleId}`
+- **Access**: Authenticated (Requires incident access)
+- **Description**: Removes the link between the incident and the knowledge article.
+- **Response `200 OK`**: Success message.
+
+##### `GET /api/incidents/{incidentId}/knowledge`
+- **Access**: Authenticated (Requires incident access)
+- **Description**: Lists all knowledge articles linked to the specified incident, filtered by the caller's article visibility.
+- **Response `200 OK`**: `List<IncidentKnowledgeLinkResponse>`.
 
 ---
 

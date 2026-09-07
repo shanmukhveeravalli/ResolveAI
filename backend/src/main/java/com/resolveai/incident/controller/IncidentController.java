@@ -9,6 +9,8 @@ import com.resolveai.incident.entity.Severity;
 import com.resolveai.incident.service.IncidentCommentService;
 import com.resolveai.incident.service.IncidentHistoryService;
 import com.resolveai.incident.service.IncidentService;
+import com.resolveai.knowledge.dto.IncidentKnowledgeLinkResponse;
+import com.resolveai.knowledge.service.IncidentKnowledgeLinkService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,6 +41,7 @@ public class IncidentController {
     private final IncidentService incidentService;
     private final IncidentCommentService incidentCommentService;
     private final IncidentHistoryService incidentHistoryService;
+    private final IncidentKnowledgeLinkService incidentKnowledgeLinkService;
 
     @PostMapping
     @Operation(summary = "Create a new incident", description = "Reports an incident with initial status NEW. The authenticated user is registered as the reporter.")
@@ -186,6 +189,60 @@ public class IncidentController {
     })
     public ResponseEntity<ApiResponse<List<IncidentHistoryResponse>>> getHistory(@PathVariable Long id) {
         List<IncidentHistoryResponse> response = incidentHistoryService.getIncidentHistory(id);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @PostMapping("/{incidentId}/knowledge/{articleId}")
+    @Operation(summary = "Link knowledge article to incident", description = "Associates an existing knowledge article with an incident.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "Knowledge article linked successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Incident or Article not found"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "Conflict - Article already linked to incident")
+    })
+    public ResponseEntity<ApiResponse<IncidentKnowledgeLinkResponse>> linkKnowledgeArticle(
+            @PathVariable("incidentId") Long incidentId,
+            @PathVariable("articleId") Long articleId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        IncidentKnowledgeLinkResponse response = incidentKnowledgeLinkService.linkArticleToIncident(
+                incidentId, articleId, userDetails.getUsername());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.created("Knowledge article linked to incident successfully", response));
+    }
+
+    @DeleteMapping("/{incidentId}/knowledge/{articleId}")
+    @Operation(summary = "Unlink knowledge article from incident", description = "Removes the association between a knowledge article and an incident.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Knowledge article unlinked successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Incident, Article, or Link not found")
+    })
+    public ResponseEntity<ApiResponse<Void>> unlinkKnowledgeArticle(
+            @PathVariable("incidentId") Long incidentId,
+            @PathVariable("articleId") Long articleId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        incidentKnowledgeLinkService.unlinkArticleFromIncident(incidentId, articleId, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Knowledge article unlinked successfully", null));
+    }
+
+    @GetMapping("/{incidentId}/knowledge")
+    @Operation(summary = "Get knowledge articles linked to incident", description = "Retrieves all knowledge articles linked to the incident that the caller is authorized to view.")
+    @io.swagger.v3.oas.annotations.responses.ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Linked knowledge articles retrieved successfully"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "Forbidden"),
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "Incident not found")
+    })
+    public ResponseEntity<ApiResponse<List<IncidentKnowledgeLinkResponse>>> getLinkedKnowledgeArticles(
+            @PathVariable("incidentId") Long incidentId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+
+        List<IncidentKnowledgeLinkResponse> response = incidentKnowledgeLinkService.getLinkedArticles(
+                incidentId, userDetails.getUsername());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 }

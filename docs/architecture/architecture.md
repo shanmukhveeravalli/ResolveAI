@@ -171,6 +171,16 @@ Every state change or assignee mutation triggers an immutable `IncidentHistory` 
 In addition to role checks (`@PreAuthorize("hasRole('ENGINEER')")`), method-level resource ownership checks ensure that:
 - Employees cannot fetch `/api/incidents/{id}` unless `incident.reporterId == currentUserId`.
 - Engineers can update incidents only if they are assigned to the incident or belong to the assigned team.
+- Knowledge base articles in `DRAFT` or `ARCHIVED` status cannot be accessed or listed by standard employees, nor by other engineers who are not the author (only the author or managers/admins may access draft/archived articles).
+- Incident-knowledge linking (`incident_knowledge_links`) strictly enforces incident accessibility and caller visibility over the linked article.
+
+### 6.4 Knowledge Base Lifecycle & Linking
+Knowledge Base articles follow a strict ITIL lifecycle:
+- **`DRAFT` → `PUBLISHED`**: Publishes article, populating `published_at` timestamp. Accessible by author engineer, manager, or admin.
+- **`DRAFT` → `ARCHIVED`**: Retires a draft article without publication.
+- **`PUBLISHED` → `ARCHIVED`**: Deprecates a published article.
+- All other state transitions (such as `ARCHIVED` → `PUBLISHED` or `ARCHIVED` → `DRAFT`) are illegal and rejected with HTTP 400 `InvalidKnowledgeArticleStatusTransitionException`.
+- **Relational Traceability**: Articles can be linked to incidents via `incident_knowledge_links` (`POST /api/incidents/{incidentId}/knowledge/{articleId}`), with built-in duplicate link prevention (HTTP 409).
 
 ---
 

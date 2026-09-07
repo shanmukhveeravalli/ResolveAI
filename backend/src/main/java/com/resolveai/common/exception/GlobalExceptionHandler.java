@@ -205,6 +205,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
     }
 
+    @ExceptionHandler(com.resolveai.knowledge.exception.InvalidKnowledgeArticleStatusTransitionException.class)
+    public ResponseEntity<ApiErrorResponse> handleInvalidKnowledgeArticleStatusTransitionException(
+            com.resolveai.knowledge.exception.InvalidKnowledgeArticleStatusTransitionException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("INVALID_STATUS_TRANSITION")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccessDeniedException(
             AccessDeniedException ex, HttpServletRequest request) {

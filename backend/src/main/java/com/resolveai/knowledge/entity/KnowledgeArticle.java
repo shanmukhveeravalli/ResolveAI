@@ -4,6 +4,7 @@ import com.resolveai.common.entity.BaseAuditEntity;
 import com.resolveai.incident.entity.Category;
 import com.resolveai.user.entity.User;
 import jakarta.persistence.*;
+import java.time.Instant;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -59,4 +60,10 @@ public class KnowledgeArticle extends BaseAuditEntity {
 
     @Column(length = 500)
     private String tags;
+
+    @Column(columnDefinition = "TEXT")
+    private String content;
+
+    @Column(name = "published_at")
+    private Instant publishedAt;
 }

@@ -5,6 +5,7 @@ import com.resolveai.knowledge.entity.KnowledgeArticleStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,7 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArticle, Long> {
+public interface KnowledgeArticleRepository extends JpaRepository<KnowledgeArticle, Long>, JpaSpecificationExecutor<KnowledgeArticle> {
     Optional<KnowledgeArticle> findBySlug(String slug);
     boolean existsBySlug(String slug);
     Page<KnowledgeArticle> findByStatus(KnowledgeArticleStatus status, Pageable pageable);

@@ -180,4 +180,53 @@ public class AuthorizationService {
         }
         return false;
     }
+
+    /**
+     * Checks if the currently authenticated user can create knowledge articles.
+     */
+    public boolean canCreateKnowledgeArticle() {
+        return hasAnyRole(RoleConstants.ENGINEER, RoleConstants.MANAGER, RoleConstants.ADMIN);
+    }
+
+    /**
+     * Checks if the currently authenticated user can view the given knowledge article:
+     * - PUBLISHED: all authenticated users can view
+     * - DRAFT / ARCHIVED: only ADMIN, MANAGER, or author ENGINEER
+     */
+    public boolean canViewKnowledgeArticle(com.resolveai.knowledge.entity.KnowledgeArticle article) {
+        if (article == null) {
+            return false;
+        }
+        if (article.getStatus() == com.resolveai.knowledge.entity.KnowledgeArticleStatus.PUBLISHED) {
+            return true;
+        }
+        if (isAdmin() || hasRole(RoleConstants.MANAGER)) {
+            return true;
+        }
+        if (hasRole(RoleConstants.ENGINEER)) {
+            Long authorId = article.getAuthor() != null ? article.getAuthor().getId() : null;
+            return isCurrentUser(authorId);
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the currently authenticated user can update, publish, or archive a knowledge article:
+     * - ADMIN, MANAGER: can manage any article
+     * - ENGINEER: can manage only their own articles
+     * - EMPLOYEE: forbidden
+     */
+    public boolean canManageKnowledgeArticle(com.resolveai.knowledge.entity.KnowledgeArticle article) {
+        if (article == null) {
+            return false;
+        }
+        if (isAdmin() || hasRole(RoleConstants.MANAGER)) {
+            return true;
+        }
+        if (hasRole(RoleConstants.ENGINEER)) {
+            Long authorId = article.getAuthor() != null ? article.getAuthor().getId() : null;
+            return isCurrentUser(authorId);
+        }
+        return false;
+    }
 }
