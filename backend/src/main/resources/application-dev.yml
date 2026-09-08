@@ -43,3 +43,10 @@ resolveai:
     secret: ${JWT_SECRET:c2VjdXJlX2VudGVycHJpc2VfamF2YV8yMV9zcHJpbmdfYm9vdF9qd3Rfc2VjcmV0X2tleV9leGFtcGxl}
     access-expiration-ms: ${JWT_ACCESS_EXPIRATION:${JWT_EXPIRATION_MS:900000}}
     refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:${JWT_REFRESH_EXPIRATION_MS:604800000}}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    provider: ${AI_PROVIDER:openai}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:gpt-4o-mini}
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    timeout-seconds: ${AI_TIMEOUT:10}

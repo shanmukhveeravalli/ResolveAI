@@ -203,42 +203,66 @@ SLA rules are never hardcoded. They are dynamically driven by the `sla_policies`
 
 ---
 
-## 8. AI & RAG Subsystem Architecture
+## 8. AI Foundation & Advisory Subsystem Architecture (Phase 10 Implemented)
 
-AI capabilities are designed with high resilience and advisory boundaries.
+ResolveAI provides a vendor-independent, highly resilient AI Foundation designed to assist support engineers and managers with incident triage, categorization, severity suggestion, and operational summarization.
+
+### 8.1 Architectural Sequence & Boundary
 
 ```mermaid
 sequenceDiagram
-    participant Eng as Engineer UI
-    participant API as /api/ai/analyze-incident
-    participant AISvc as AiAssistantService (Interface)
-    participant VectorDB as pgvector (Embeddings)
-    participant LLM as LLM Provider (Gemini/OpenAI)
+    participant Caller as Engineer / Manager UI
+    participant Ctrl as AiController (POST /api/ai/incidents/{id}/analyze)
+    participant Auth as AuthorizationService
+    participant AISvc as AiService (@Transactional readOnly)
+    participant Repo as IncidentRepository
+    participant Provider as AiProvider (Interface)
+    participant LLM as OpenAiCompatibleAiProvider (RestClient)
 
-    Eng->>API: Request AI Assistance (Title, Description)
-    API->>AISvc: analyze(IncidentContext)
-    
-    rect rgb(240, 245, 255)
-    Note over AISvc,VectorDB: Step 1: Embedding & Retrieval
-    AISvc->>AISvc: Generate Query Embedding
-    AISvc->>VectorDB: Cosine Similarity Search (K=3 Articles, K=3 Incidents)
-    VectorDB-->>AISvc: Return Relevant Context + Metadata
-    end
-
-    rect rgb(240, 255, 240)
-    Note over AISvc,LLM: Step 2: Context Augmented Prompt
-    AISvc->>LLM: Prompt (Incident details + Retrieved Grounding Sources)
-    LLM-->>AISvc: Structured JSON (Summary, Category, Severity, Recommendation, Sources)
-    end
-
-    AISvc-->>API: AiAnalysisDTO
-    API-->>Eng: Render Advisory Box (With Source Citations & Acceptance Buttons)
+    Caller->>Ctrl: POST /api/ai/incidents/{id}/analyze (Bearer JWT)
+    Ctrl->>AISvc: analyzeIncident(incidentId)
+    AISvc->>AISvc: Verify resolveai.ai.enabled == true
+    AISvc->>Repo: findById(incidentId)
+    Repo-->>AISvc: Incident Entity
+    AISvc->>Auth: canAccessIncident(incident)
+    Auth-->>AISvc: true / false (throw AccessDeniedException 403)
+    AISvc->>AISvc: Build sanitized IncidentAnalysisPrompt
+    AISvc->>Provider: analyzeIncident(prompt)
+    Provider->>LLM: HTTP POST /chat/completions (Strict Timeout & Header)
+    LLM-->>Provider: Structured JSON Completion
+    Provider->>Provider: Validate Enums & Parse IncidentAnalysisResponse
+    Provider-->>AISvc: IncidentAnalysisResponse (Non-binding)
+    AISvc-->>Ctrl: IncidentAnalysisResponse
+    Ctrl-->>Caller: 200 OK (Advisory Suggestions)
 ```
 
-### AI Guiding Principles:
-1. **Provider Isolation**: The core application injects `AiAssistantService`. Implementation adapters (`GeminiAiAdapter`, `OpenAiAdapter`, `MockAiAdapter`) can be swapped via configuration (`ai.provider=mock`).
-2. **Fault Tolerance**: If the LLM call times out or throws an error (quota, 503, parse error), the service catches the exception and returns a fallback DTO (`isAvailable=false, fallbackMessage="AI assistance is currently unavailable."`). **The main incident workflow is never blocked.**
-3. **Advisory Semantics**: AI output is explicitly labeled as *recommendation*. The engineer must click "Accept Suggestion" to populate fields.
+### 8.2 Architectural Principles & Guiding Invariants
+
+1. **Vendor-Independent Abstraction (`AiProvider`)**:
+   - The domain service (`AiService`) depends exclusively on the `AiProvider` interface.
+   - Provider implementations (`OpenAiCompatibleAiProvider`, or future providers) are decoupled and swappable via configuration (`resolveai.ai.provider`).
+   - Network interactions are executed using Spring Boot 3 `RestClient` configured with explicit connect and read timeouts (`resolveai.ai.timeout-seconds`).
+
+2. **Strict Failure Isolation & Controlled 503**:
+   - AI is treated as an auxiliary advisory service.
+   - If AI is disabled (`resolveai.ai.enabled=false`), API keys are missing, network timeouts occur, HTTP error status codes are returned, or invalid JSON/enums are parsed, the system throws `AiServiceUnavailableException`.
+   - `GlobalExceptionHandler` intercepts and translates this into an RFC-compliant `503 SERVICE_UNAVAILABLE` error envelope.
+   - **Zero Cascading Failure**: Core incident creation, status transitions, SLA calculations, notifications, and analytics continue functioning normally even when AI is disabled or unreachable.
+
+3. **Human-in-the-Loop Advisory Semantics (No Auto-Mutation)**:
+   - The AI analysis endpoint is strictly read-only (`@Transactional(readOnly = true)`).
+   - AI analysis **never** modifies incident category, priority, severity, status, or assignee in the database.
+   - Suggestions are advisory recommendations presented to the human engineer or manager, who retains full control over ticket mutation.
+
+4. **Security & Data Minimization**:
+   - Endpoint access requires authenticated `ENGINEER`, `MANAGER`, or `ADMIN` roles via `@PreAuthorize`.
+   - Resource-level checks via `AuthorizationService.canAccessIncident` verify the caller has legitimate access to the specific incident.
+   - `IncidentAnalysisPrompt` includes only operational ticket text (title, description, current category/priority/severity). Passwords, JWTs, hashes, and internal secrets are strictly excluded.
+   - API keys are never logged and never exposed in client responses or exception messages.
+
+5. **Phase 10 vs. Phase 11 Boundary**:
+   - **Phase 10 (Current — Completed)**: Core AI foundation, vendor abstraction, OpenAI-compatible provider, failure isolation, configuration, and incident analysis endpoint.
+   - **Phase 11 (Future — Out of Scope for Phase 10)**: Retrieval-Augmented Generation (RAG), vector embeddings, pgvector storage, and semantic knowledge retrieval. Phase 10 does NOT include vector databases or embeddings.
 
 ---
 

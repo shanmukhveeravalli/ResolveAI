@@ -875,5 +875,40 @@ All notification endpoints are strictly scoped to the authenticated user derived
 ```
 - **Response `401 Unauthorized`**: Missing or invalid authentication token.
 
+---
 
+### 3.10 AI Foundation (`/api/ai`)
 
+#### `POST /api/ai/incidents/{incidentId}/analyze`
+- **Access**: Authenticated (`ENGINEER`, `MANAGER`, `ADMIN`). Caller must also pass resource-level incident authorization (`canAccessIncident`).
+- **Description**: Triggers non-binding AI-assisted triage and analysis for an incident. The operation generates advisory categorization, priority, severity suggestions, an executive summary, and troubleshooting analysis.
+- **Safety Guarantee**: Strictly read-only (`@Transactional(readOnly = true)`). The incident entity, status, priority, severity, and assignments in the database are **never** modified by this endpoint.
+- **Path Parameters**:
+  - `incidentId` (integer, required): Target incident identifier.
+- **Request Body**: None. Contextual operational fields (title, description, current category/priority/severity) are sanitized and extracted from the persisted incident.
+- **Response `200 OK`**: `IncidentAnalysisResponse`
+```json
+{
+  "incidentId": 42,
+  "suggestedCategory": "Database & Storage",
+  "suggestedPriority": "P1",
+  "suggestedSeverity": "CRITICAL",
+  "summary": "HikariCP connection pool exhaustion causing checkout service timeouts.",
+  "analysis": "1. Inspect database active connection counts.\n2. Verify connection leak detection settings in HikariCP.\n3. Temporarily scale connection pool or restart hung instances."
+}
+```
+- **Response `401 Unauthorized`**: Missing, expired, or malformed JWT authentication token.
+- **Response `403 Forbidden`**:
+  - User has `EMPLOYEE` role (lacks required role privilege).
+  - User has `ENGINEER` role but is not assigned to or reporter of this incident.
+- **Response `404 Not Found`**: Incident with the specified `incidentId` does not exist.
+- **Response `503 Service Unavailable`**: AI subsystem is disabled (`resolveai.ai.enabled=false`), provider timed out, network failure, HTTP error returned by provider, or malformed provider output. Standard `ApiErrorResponse` returned:
+```json
+{
+  "timestamp": "2026-09-07T11:42:00.000Z",
+  "status": 503,
+  "error": "SERVICE_UNAVAILABLE",
+  "message": "AI service is currently disabled. Enable with resolveai.ai.enabled=true",
+  "path": "/api/ai/incidents/42/analyze"
+}
+```

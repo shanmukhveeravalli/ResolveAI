@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { MainLayout } from './layouts/MainLayout';
 import { HomePage } from './pages/HomePage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { AiTriagePage } from './pages/AiTriagePage';
 import { useHealthCheck } from './hooks/useHealthCheck';
-import { BarChart3, Home } from 'lucide-react';
+import { BarChart3, Home, Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'home' | 'analytics'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'analytics' | 'ai'>('home');
   const { data: healthData, loading, error } = useHealthCheck();
   const isBackendHealthy = Boolean(healthData && healthData.status === 'UP');
 
@@ -49,13 +50,29 @@ export const App: React.FC = () => {
         >
           <BarChart3 size={16} /> Operations Analytics
         </button>
+        <button
+          onClick={() => setActiveTab('ai')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.5rem 1rem',
+            borderRadius: 'var(--radius-md)',
+            border: activeTab === 'ai' ? '1px solid var(--primary)' : '1px solid var(--border-color)',
+            backgroundColor: activeTab === 'ai' ? 'rgba(59, 130, 246, 0.15)' : 'var(--bg-card)',
+            color: activeTab === 'ai' ? 'var(--primary)' : 'var(--text-secondary)',
+            fontWeight: 600,
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+          }}
+        >
+          <Sparkles size={16} /> AI Advisory Triage
+        </button>
       </div>
 
-      {activeTab === 'home' ? (
-        <HomePage healthData={healthData} loading={loading} error={error} />
-      ) : (
-        <AnalyticsPage />
-      )}
+      {activeTab === 'home' && <HomePage healthData={healthData} loading={loading} error={error} />}
+      {activeTab === 'analytics' && <AnalyticsPage />}
+      {activeTab === 'ai' && <AiTriagePage />}
     </MainLayout>
   );
 };

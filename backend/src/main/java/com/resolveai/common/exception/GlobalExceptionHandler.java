@@ -1,5 +1,6 @@
 package com.resolveai.common.exception;
 
+import com.resolveai.ai.exception.AiServiceUnavailableException;
 import com.resolveai.auth.exception.EmailAlreadyExistsException;
 import com.resolveai.auth.exception.InvalidTokenException;
 import com.resolveai.common.dto.ApiErrorResponse;
@@ -233,6 +234,23 @@ public class GlobalExceptionHandler {
                 .build();
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    @ExceptionHandler(AiServiceUnavailableException.class)
+    public ResponseEntity<ApiErrorResponse> handleAiServiceUnavailableException(
+            AiServiceUnavailableException ex, HttpServletRequest request) {
+
+        log.warn("AI service unavailable at [{}]: {}", request.getRequestURI(), ex.getMessage());
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.SERVICE_UNAVAILABLE.value())
+                .error("SERVICE_UNAVAILABLE")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(error);
     }
 
     @ExceptionHandler(Exception.class)
