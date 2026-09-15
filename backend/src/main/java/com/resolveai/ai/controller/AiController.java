@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AiController {
 
     private final AiService aiService;
+    private final com.resolveai.ai.rag.RagService ragService;
 
     /**
      * Performs AI-assisted triage and analysis for an incident.
@@ -46,6 +47,27 @@ public class AiController {
     })
     public ResponseEntity<IncidentAnalysisResponse> analyzeIncident(@PathVariable Long incidentId) {
         IncidentAnalysisResponse response = aiService.analyzeIncident(incidentId);
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Performs grounded RAG analysis using retrieved knowledge articles and historical incidents.
+     *
+     * @param incidentId target incident identifier
+     * @return grounded diagnosis, resolution recommendations, and cited source metadata
+     */
+    @PostMapping("/incidents/{incidentId}/rag-analyze")
+    @PreAuthorize("hasAnyRole('ENGINEER', 'MANAGER', 'ADMIN')")
+    @Operation(summary = "Analyze incident with Grounded RAG", description = "Retrieves relevant knowledge articles and historical incidents to produce an evidence-grounded diagnosis and resolution suggestion.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "RAG analysis generated successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden - insufficient role or incident permissions"),
+            @ApiResponse(responseCode = "404", description = "Incident not found"),
+            @ApiResponse(responseCode = "503", description = "AI service or embedding provider unavailable")
+    })
+    public ResponseEntity<com.resolveai.ai.rag.dto.RagAnalysisResponse> analyzeIncidentWithRag(@PathVariable Long incidentId) {
+        com.resolveai.ai.rag.dto.RagAnalysisResponse response = ragService.analyzeIncidentWithRag(incidentId);
         return ResponseEntity.ok(response);
     }
 }

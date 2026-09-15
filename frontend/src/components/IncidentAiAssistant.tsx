@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Card } from './Card';
 import { Badge } from './Badge';
 import { aiService } from '../services/aiService';
-import { IncidentAnalysisResponse } from '../types/ai';
-import { Sparkles, Loader2, AlertCircle, CheckCircle, Info } from 'lucide-react';
+import { IncidentAnalysisResponse, RagAnalysisResponse } from '../types/ai';
+import { Sparkles, Loader2, AlertCircle, CheckCircle, Info, FileText, Database } from 'lucide-react';
 
 interface IncidentAiAssistantProps {
   incidentId: number;
@@ -11,53 +11,68 @@ interface IncidentAiAssistantProps {
 
 export const IncidentAiAssistant: React.FC<IncidentAiAssistantProps> = ({ incidentId }) => {
   const [analysis, setAnalysis] = useState<IncidentAnalysisResponse | null>(null);
+  const [ragAnalysis, setRagAnalysis] = useState<RagAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [ragLoading, setRagLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
+    setAnalysis(null);
+    setRagAnalysis(null);
     try {
       const data = await aiService.analyzeIncident(incidentId);
       setAnalysis(data);
     } catch (err: any) {
-      if (err.response?.status === 503) {
-        setError('AI Assistant is currently unavailable or disabled. Core incident management workflows remain fully functional.');
-      } else if (err.response?.status === 403) {
-        setError('Access denied: You do not have permission to run AI analysis on this incident.');
-      } else if (err.response?.status === 404) {
-        setError('Incident not found.');
-      } else {
-        setError(err.response?.data?.message || 'Failed to complete AI analysis. Please try again.');
-      }
+      handleError(err);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleRagAnalyze = async () => {
+    setRagLoading(true);
+    setError(null);
+    setAnalysis(null);
+    setRagAnalysis(null);
+    try {
+      const data = await aiService.analyzeIncidentRag(incidentId);
+      setRagAnalysis(data);
+    } catch (err: any) {
+      handleError(err);
+    } finally {
+      setRagLoading(false);
+    }
+  };
+
+  const handleError = (err: any) => {
+    if (err.response?.status === 503) {
+      setError('AI Assistant is currently unavailable or disabled. Core incident management workflows remain fully functional.');
+    } else if (err.response?.status === 403) {
+      setError('Access denied: You do not have permission to run AI analysis on this incident.');
+    } else if (err.response?.status === 404) {
+      setError('Incident not found.');
+    } else {
+      setError(err.response?.data?.message || 'Failed to complete AI analysis. Please try again.');
+    }
+  };
+
   const getPriorityVariant = (priority: string) => {
     switch (priority) {
-      case 'P1':
-        return 'danger';
-      case 'P2':
-        return 'warning';
-      case 'P3':
-        return 'primary';
-      default:
-        return 'neutral';
+      case 'P1': return 'danger';
+      case 'P2': return 'warning';
+      case 'P3': return 'primary';
+      default: return 'neutral';
     }
   };
 
   const getSeverityVariant = (severity: string) => {
     switch (severity) {
-      case 'CRITICAL':
-        return 'danger';
-      case 'HIGH':
-        return 'warning';
-      case 'MEDIUM':
-        return 'primary';
-      default:
-        return 'neutral';
+      case 'CRITICAL': return 'danger';
+      case 'HIGH': return 'warning';
+      case 'MEDIUM': return 'primary';
+      default: return 'neutral';
     }
   };
 
@@ -80,37 +95,70 @@ export const IncidentAiAssistant: React.FC<IncidentAiAssistantProps> = ({ incide
             <span>AI suggestions are non-binding recommendations and do not automatically alter ticket state.</span>
           </div>
 
-          <button
-            onClick={handleAnalyze}
-            disabled={loading}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.5rem 1.25rem',
-              borderRadius: 'var(--radius-md)',
-              border: 'none',
-              background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-              color: '#ffffff',
-              fontWeight: 600,
-              fontSize: '0.875rem',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              opacity: loading ? 0.7 : 1,
-              boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
-            }}
-          >
-            {loading ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Analyzing Incident...
-              </>
-            ) : (
-              <>
-                <Sparkles size={16} />
-                Analyze with AI
-              </>
-            )}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={handleAnalyze}
+              disabled={loading || ragLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1.25rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--primary)',
+                background: 'transparent',
+                color: 'var(--primary)',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                cursor: loading || ragLoading ? 'not-allowed' : 'pointer',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={16} />
+                  Analyze with AI
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleRagAnalyze}
+              disabled={loading || ragLoading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1.25rem',
+                borderRadius: 'var(--radius-md)',
+                border: 'none',
+                background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+                color: '#ffffff',
+                fontWeight: 600,
+                fontSize: '0.875rem',
+                cursor: loading || ragLoading ? 'not-allowed' : 'pointer',
+                opacity: ragLoading ? 0.7 : 1,
+                boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
+              }}
+            >
+              {ragLoading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Analyzing with RAG...
+                </>
+              ) : (
+                <>
+                  <Database size={16} />
+                  Analyze with RAG
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Error State */}
@@ -136,8 +184,8 @@ export const IncidentAiAssistant: React.FC<IncidentAiAssistantProps> = ({ incide
           </div>
         )}
 
-        {/* Results State */}
-        {analysis && !loading && (
+        {/* Results State - Regular AI */}
+        {analysis && !loading && !ragLoading && (
           <div
             style={{
               backgroundColor: 'rgba(15, 23, 42, 0.6)',
@@ -200,6 +248,90 @@ export const IncidentAiAssistant: React.FC<IncidentAiAssistantProps> = ({ incide
                 {analysis.analysis}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Results State - RAG AI */}
+        {ragAnalysis && !loading && !ragLoading && (
+          <div
+            style={{
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <CheckCircle size={18} color="var(--success)" />
+                <span style={{ fontWeight: 700, fontSize: '0.875rem', letterSpacing: '0.05em', color: 'var(--text-primary)' }}>
+                  RAG ANALYSIS RESULT
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Badge variant={Number(ragAnalysis.confidence) > 0.8 ? 'success' : 'warning'}>
+                  Confidence: {Math.round(Number(ragAnalysis.confidence) * 100)}%
+                </Badge>
+              </div>
+            </div>
+
+            {/* Diagnosis */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                Diagnosis
+              </div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                {ragAnalysis.diagnosis}
+              </div>
+            </div>
+
+            {/* Resolution Suggestion */}
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>
+                Resolution Suggestion
+              </div>
+              <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
+                {ragAnalysis.resolutionSuggestion}
+              </div>
+            </div>
+
+            {/* Sources */}
+            {ragAnalysis.sources && ragAnalysis.sources.length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+                  Cited Sources
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {ragAnalysis.sources.map((source, index) => (
+                    <div key={index} style={{
+                      padding: '0.75rem',
+                      backgroundColor: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: '0.875rem'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          <FileText size={14} />
+                          {source.title}
+                        </div>
+                        <Badge variant="neutral">{Math.round(source.similarity * 100)}% Match</Badge>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', fontSize: '0.75rem' }}>
+                        <Badge variant="primary">{source.sourceType}</Badge>
+                        <span style={{ color: 'var(--text-muted)' }}>Ref: {source.reference}</span>
+                      </div>
+                      <div style={{ color: 'var(--text-secondary)', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                        "{source.snippet}"
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

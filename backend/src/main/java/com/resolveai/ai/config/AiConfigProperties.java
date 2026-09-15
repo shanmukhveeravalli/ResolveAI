@@ -41,4 +41,19 @@ public class AiConfigProperties {
      * HTTP connection and read timeout in seconds.
      */
     private int timeoutSeconds = 10;
+
+    /**
+     * Embedding model name.
+     */
+    private String embeddingModel = "text-embedding-3-small";
+
+    /**
+     * Vector embedding dimensions.
+     */
+    private int embeddingDimensions = 1536;
+
+    /**
+     * Default top-K sources to retrieve in RAG search.
+     */
+    private int topK = 5;
 }

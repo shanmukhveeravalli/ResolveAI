@@ -17,4 +17,12 @@ public interface AiProvider {
      * @return structured advisory suggestion
      */
     IncidentAnalysisResponse analyzeIncident(IncidentAnalysisPrompt prompt);
+
+    /**
+     * Performs evidence-grounded incident diagnosis and resolution suggestions using retrieved context.
+     *
+     * @param prompt sanitized incident attributes accompanied by retrieved grounding sources
+     * @return grounded advisory suggestions citing specific source references
+     */
+    com.resolveai.ai.rag.dto.RagAnalysisResponse generateRagAnalysis(com.resolveai.ai.rag.dto.RagAnalysisPrompt prompt);
 }

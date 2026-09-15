@@ -46,6 +46,7 @@ public class KnowledgeArticleService {
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
     private final AuthorizationService authorizationService;
+    private final com.resolveai.ai.rag.VectorEmbeddingSyncService vectorEmbeddingSyncService;
 
     /**
      * Creates a new knowledge base article with default status DRAFT.
@@ -98,6 +99,8 @@ public class KnowledgeArticleService {
 
         KnowledgeArticle saved = knowledgeArticleRepository.save(article);
         log.info("Knowledge article created with ID {} and slug '{}' by {}", saved.getId(), saved.getSlug(), currentUserEmail);
+
+        vectorEmbeddingSyncService.syncArticleEmbedding(saved.getId());
 
         return KnowledgeArticleResponse.fromEntity(saved);
     }
@@ -157,6 +160,8 @@ public class KnowledgeArticleService {
         KnowledgeArticle saved = knowledgeArticleRepository.save(article);
         log.info("Knowledge article ID {} updated by {}", saved.getId(), currentUserEmail);
 
+        vectorEmbeddingSyncService.syncArticleEmbedding(saved.getId());
+
         return KnowledgeArticleResponse.fromEntity(saved);
     }
 
@@ -182,6 +187,8 @@ public class KnowledgeArticleService {
 
         KnowledgeArticle saved = knowledgeArticleRepository.save(article);
         log.info("Knowledge article ID {} published by {}", saved.getId(), currentUserEmail);
+
+        vectorEmbeddingSyncService.syncArticleEmbedding(saved.getId());
 
         return KnowledgeArticleResponse.fromEntity(saved);
     }

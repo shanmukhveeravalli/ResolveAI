@@ -260,9 +260,14 @@ sequenceDiagram
    - `IncidentAnalysisPrompt` includes only operational ticket text (title, description, current category/priority/severity). Passwords, JWTs, hashes, and internal secrets are strictly excluded.
    - API keys are never logged and never exposed in client responses or exception messages.
 
-5. **Phase 10 vs. Phase 11 Boundary**:
-   - **Phase 10 (Current — Completed)**: Core AI foundation, vendor abstraction, OpenAI-compatible provider, failure isolation, configuration, and incident analysis endpoint.
-   - **Phase 11 (Future — Out of Scope for Phase 10)**: Retrieval-Augmented Generation (RAG), vector embeddings, pgvector storage, and semantic knowledge retrieval. Phase 10 does NOT include vector databases or embeddings.
+5. **Phase 10 & 11 (Implemented)**:
+   - **Phase 10**: Core AI foundation, vendor abstraction, OpenAI-compatible provider, failure isolation, configuration, and standard incident analysis endpoint.
+   - **Phase 11**: Grounded Retrieval-Augmented Generation (RAG).
+     - **Vector Storage**: Integrates `pgvector` for storing 1536-dimensional embeddings.
+     - **Embedding Pipeline**: `EmbeddingProvider` interface handles synchronous text embedding for Knowledge Articles and resolved/closed Historical Incidents.
+     - **Vector Search**: `VectorSearchService` executes HNSW indexed cosine similarity queries respecting visibility permissions (e.g. Draft articles are filtered).
+     - **Grounded AI**: `RagService` orchestrates vector search, top-K filtering, and prompt grounding before dispatching to the AI provider. Responses include strict source citations.
+     - **Failure Isolation**: Embedding failures or vector database timeouts do not disrupt core CRUD operations or lifecycle transitions.
 
 ---
 

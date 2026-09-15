@@ -1,5 +1,5 @@
 import { apiClient } from '../api/client';
-import { IncidentAnalysisResponse } from '../types/ai';
+import { IncidentAnalysisResponse, RagAnalysisResponse } from '../types/ai';
 
 export const aiService = {
   /**
@@ -10,6 +10,17 @@ export const aiService = {
    */
   analyzeIncident: async (incidentId: number): Promise<IncidentAnalysisResponse> => {
     const response = await apiClient.post<IncidentAnalysisResponse>(`/ai/incidents/${incidentId}/analyze`);
+    return response.data;
+  },
+
+  /**
+   * Requests grounded AI analysis for an incident using RAG.
+   *
+   * @param incidentId target incident identifier
+   * @returns grounded advisory response with sources
+   */
+  analyzeIncidentRag: async (incidentId: number): Promise<RagAnalysisResponse> => {
+    const response = await apiClient.post<RagAnalysisResponse>(`/ai/incidents/${incidentId}/rag-analyze`);
     return response.data;
   },
 };

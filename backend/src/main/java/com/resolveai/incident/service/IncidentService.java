@@ -64,6 +64,7 @@ public class IncidentService {
     private final AuthorizationService authorizationService;
     private final SlaService slaService;
     private final NotificationService notificationService;
+    private final com.resolveai.ai.rag.VectorEmbeddingSyncService vectorEmbeddingSyncService;
 
     /**
      * Creates a new incident, assigns the authenticated user as the reporter, and logs creation audit.
@@ -353,6 +354,9 @@ public class IncidentService {
         }
 
         Incident saved = incidentRepository.save(incident);
+        if (request.getStatus() == IncidentStatus.RESOLVED || request.getStatus() == IncidentStatus.CLOSED) {
+            vectorEmbeddingSyncService.syncIncidentEmbedding(saved.getId());
+        }
 
         if (request.getStatus() == IncidentStatus.RESOLVED) {
             slaService.recordResolution(saved, saved.getResolvedAt());

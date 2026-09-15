@@ -613,9 +613,9 @@ All endpoints are secured and strictly restricted to `MANAGER` and `ADMIN` roles
 
 ### 3.8 AI Advisory (`/api/ai`)
 
-#### `POST /api/ai/analyze-incident`
+#### `POST /api/ai/incidents/{incidentId}/analyze`
 - **Access**: `ENGINEER`, `MANAGER`, `ADMIN`
-- **Description**: Advisory copilot endpoint providing incident summary, category suggestions, severity suggestions, and RAG resolution recommendations.
+- **Description**: Advisory copilot endpoint providing incident summary, category suggestions, severity suggestions, and operational triage recommendations.
 - **Request Body**:
 ```json
 {
@@ -627,29 +627,51 @@ All endpoints are secured and strictly restricted to `MANAGER` and `ADMIN` roles
 - **Response `200 OK`**:
 ```json
 {
-  "isAvailable": true,
+  "incidentId": 101,
   "summary": "East Coast office VPN gateway unreachable due to authentication timeouts on subnet 10.24.0.0/16.",
-  "suggestedCategory": { "id": 3, "name": "Network Infrastructure", "confidence": 0.94 },
+  "suggestedCategory": "Network Infrastructure",
   "suggestedSeverity": "HIGH",
   "suggestedPriority": "P2",
-  "recommendation": "Check edge router BGP peers for route collisions. If logs display ICMP unreachable, clear BGP soft tables per standard SOP.",
+  "analysis": "Check edge router BGP peers for route collisions. If logs display ICMP unreachable, clear BGP soft tables per standard SOP."
+}
+```
+
+#### `POST /api/ai/incidents/{incidentId}/rag-analyze`
+- **Access**: `ENGINEER`, `MANAGER`, `ADMIN`
+- **Description**: Grounded Retrieval-Augmented Generation (RAG) analysis endpoint providing diagnosis, resolution suggestions, and cited source documents. Does not mutate incident state. Handles embedding/AI provider failures gracefully.
+- **Request Body**: Empty
+- **Response `200 OK`**:
+```json
+{
+  "incidentId": 101,
+  "diagnosis": "Database lock order mismatch identified as root cause based on Runbook #KB-1",
+  "resolutionSuggestion": "1. Apply deterministic row lock ordering.\n2. Scale read replicas.",
+  "confidence": 0.92,
   "sources": [
     {
-      "sourceType": "KNOWLEDGE_BASE",
-      "id": 42,
-      "title": "VPN Gateway Routing Collision Resolution",
-      "relevanceScore": 0.91
+      "sourceType": "KNOWLEDGE_ARTICLE",
+      "sourceId": 1,
+      "title": "Runbook: Resolving PostgreSQL Locking Contention",
+      "similarity": 0.95,
+      "reference": "runbook-postgresql-locking-contention",
+      "snippet": "Enforce deterministic ascending primary key ordering..."
     },
     {
       "sourceType": "HISTORICAL_INCIDENT",
-      "id": 88,
-      "incidentNumber": "INC-20260812-0044",
-      "title": "Pulse Secure Authentication Outage",
-      "relevanceScore": 0.86
+      "sourceId": 2,
+      "title": "PostgreSQL Transaction Deadlock Mitigation",
+      "similarity": 0.89,
+      "reference": "INC-HIST-9002",
+      "snippet": "Resolved by ordering row locking sequence..."
     }
   ]
 }
 ```
+- **Response `401 Unauthorized`**: Unauthenticated request.
+- **Response `403 Forbidden`**: Caller lacks `ENGINEER`, `MANAGER`, or `ADMIN` role.
+- **Response `404 Not Found`**: Incident not found.
+- **Response `503 Service Unavailable`**: AI/Embedding provider is unavailable or timed out.
+
 
 ---
 
