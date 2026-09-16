@@ -219,12 +219,63 @@ The application is engineered iteratively across 19 planned phases:
 - **Phase 10**: Analytics & Operational Metrics
 - **Phase 11**: AI Foundation (Summarization, Triage Suggestions)
 - **Phase 12**: RAG & Similarity Search (Vector Embeddings)
-- **Phase 13**: Redis Caching & Rate Limiting
-- **Phase 14**: Automated Testing & Security Hardening
-- **Phase 15**: Docker & Containerization
+- **Phase 13**: Redis Caching & Rate Limiting ✅
+- **Phase 14**: Docker & Containerization ✅
+- **Phase 15**: Automated Testing & Security Hardening
 - **Phase 16**: CI/CD Pipelines
 - **Phase 17**: Cloud Deployment Readiness
 - **Phase 18**: Final Polish, Demo Scenarios & Release
+
+---
+
+## Docker & Containerization (Phase 14)
+
+ResolveAI provides a complete production-grade multi-container stack orchestrated via Docker Compose.
+
+### Architecture & Service Ports
+
+| Service | Container Name | Base Image | Internal Port | Exposed Host Port | Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **PostgreSQL** | `resolveai-postgres` | `pgvector/pgvector:pg16` | `5432` | `5432` | Primary database with `pgvector` HNSW index support |
+| **Redis** | `resolveai-redis` | `redis:7-alpine` | `6379` | `6379` | In-memory cache & rate limiter with AOF persistence |
+| **Backend** | `resolveai-backend` | `eclipse-temurin:21-jre-alpine` | `8080` | `8080` (internal/exposed) | Spring Boot 3 modular monolith API |
+| **Frontend** | `resolveai-frontend` | `nginx:alpine` | `80` | `80` | Vite React SPA + reverse proxy (`/api/` -> `backend:8080`) |
+
+### Prerequisites
+- Docker Engine 24+ or Docker Desktop (with Docker Compose v2.20+)
+
+### Quick Start with Docker Compose
+```bash
+# 1. Start the complete multi-container stack in the background
+docker compose up --build -d
+
+# 2. Check container status and health
+docker compose ps
+
+# 3. Stream container logs
+docker compose logs -f
+
+# 4. Access the applications
+# Frontend SPA & API Proxy: http://localhost (port 80)
+# Backend Health Endpoint (via Frontend Proxy): http://localhost/api/health
+# Direct Backend Health Check: docker exec resolveai-backend curl -s http://localhost:8080/api/health
+
+# 5. Stop the containers (preserving persistent volumes)
+docker compose down
+
+# 6. Stop and remove volumes (full reset)
+docker compose down -v
+```
+
+### Health Checks & Troubleshooting
+All services include Docker healthchecks:
+- **PostgreSQL**: `pg_isready -U postgres -d resolveai_db`
+- **Redis**: `redis-cli ping`
+- **Backend**: `curl -f http://localhost:8080/api/health`
+- **Frontend**: `curl -f http://localhost/healthz`
+
+> [!NOTE]
+> If host port `8080` is occupied by existing host services (such as Jenkins or local dev tools), the backend container communicates internally with Nginx over `resolveai-network:8080`, allowing the complete platform to be accessed on host port `80` (`http://localhost`). Direct container inspection can be performed via `docker exec resolveai-backend curl -s http://localhost:8080/api/health`.
 
 ---
 

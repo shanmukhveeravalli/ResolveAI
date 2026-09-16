@@ -1,30 +1,55 @@
+﻿# ==============================================================================
+# ResolveAI — Production-Ready Multi-Container Stack (Phase 14)
 # ==============================================================================
-# ResolveAI — Local PostgreSQL Development Environment (Phase 2)
-# ==============================================================================
+# Services:
+#   - postgres: PostgreSQL 16 + pgvector relational database with persistent volume
+#   - redis: Redis 7 in-memory cache & rate limiter with AOF persistence
+#   - backend: Spring Boot 3 / Java 21 modular monolith backend API
+#   - frontend: React 18 / TypeScript / Vite production SPA served by Nginx
+#
+# Architecture Note:
+#   - Container-to-container communication uses the internal bridge network
+#     (resolveai-network).
+#   - Frontend (Nginx) reverse-proxies /api/* to http://backend:8080/api/*.
+#   - Only frontend (port 80) and database/cache (ports 5432, 6379) are published
+#     to host ports by default, avoiding host port conflicts on 8080.
+#   - If host access directly to backend is needed, BACKEND_PORT can be configured.
+#
 # Usage:
-#   docker compose up -d
+#   docker compose up --build -d
 #   docker compose down
+#   docker compose ps
+#   docker compose logs -f
 # ==============================================================================
 
 services:
+  # ----------------------------------------------------------------------------
+  # Database Service: PostgreSQL 16 with pgvector extension (Phase 11-12)
+  # ----------------------------------------------------------------------------
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: resolveai-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-resolveai_db}
-      POSTGRES_USER: ${DB_USERNAME:-${DB_USER:-postgres}}
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - resolveai-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-${DB_USER:-postgres}} -d ${DB_NAME:-resolveai_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres} -d ${DB_NAME:-resolveai_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
+  # ----------------------------------------------------------------------------
+  # In-Memory Cache Service: Redis 7
+  # ----------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: resolveai-redis
@@ -34,11 +59,95 @@ services:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
+    networks:
+      - resolveai-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # Backend API Service: Spring Boot 3 / Java 21
+  # ----------------------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: resolveai-backend:0.1.0
+    container_name: resolveai-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      SERVER_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-resolveai_db}
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      FLYWAY_ENABLED: ${FLYWAY_ENABLED:-true}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-c2VjdXJlX2VudGVycHJpc2VfamF2YV8yMV9zcHJpbmdfYm9vdF9qd3Rfc2VjcmV0X2tleV9leGFtcGxl}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION:-900000}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION:-604800000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:80,http://localhost:5173,http://localhost:3000,http://frontend:80}
+      AI_ENABLED: ${AI_ENABLED:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-text-embedding-3-small}
+      AI_TOP_K: ${AI_TOP_K:-5}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_TIMEOUT: ${AI_TIMEOUT:-10}
+    expose:
+      - "8080"
+    networks:
+      - resolveai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ----------------------------------------------------------------------------
+  # Frontend SPA Service: React / Vite / Nginx
+  # ----------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    image: resolveai-frontend:0.1.0
+    container_name: resolveai-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - resolveai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  resolveai-network:
+    name: resolveai-network
+    driver: bridge
 
 volumes:
   postgres_data:
