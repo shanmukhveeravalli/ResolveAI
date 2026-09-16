@@ -25,6 +25,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -108,6 +110,7 @@ public class KnowledgeArticleService {
     /**
      * Updates an existing knowledge article.
      */
+    @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES, key = "#id")
     @Transactional
     public KnowledgeArticleResponse updateArticle(Long id, KnowledgeArticleUpdateRequest request, String currentUserEmail) {
         KnowledgeArticle article = knowledgeArticleRepository.findById(id)
@@ -169,6 +172,7 @@ public class KnowledgeArticleService {
      * Transitions an article to PUBLISHED and records publishedAt timestamp.
      * Allowed transition: DRAFT -> PUBLISHED.
      */
+    @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES, key = "#id")
     @Transactional
     public KnowledgeArticleResponse publishArticle(Long id, String currentUserEmail) {
         KnowledgeArticle article = knowledgeArticleRepository.findById(id)
@@ -197,6 +201,7 @@ public class KnowledgeArticleService {
      * Transitions an article to ARCHIVED.
      * Allowed transitions: DRAFT -> ARCHIVED, PUBLISHED -> ARCHIVED.
      */
+    @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES, key = "#id")
     @Transactional
     public KnowledgeArticleResponse archiveArticle(Long id, String currentUserEmail) {
         KnowledgeArticle article = knowledgeArticleRepository.findById(id)
@@ -221,6 +226,7 @@ public class KnowledgeArticleService {
     /**
      * Retrieves a single knowledge article by ID subject to visibility rules.
      */
+    @org.springframework.cache.annotation.Cacheable(value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES, key = "#id")
     @Transactional(readOnly = true)
     public KnowledgeArticleResponse getArticleById(Long id) {
         KnowledgeArticle article = knowledgeArticleRepository.findById(id)

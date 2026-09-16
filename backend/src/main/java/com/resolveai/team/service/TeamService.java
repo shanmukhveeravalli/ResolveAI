@@ -14,6 +14,9 @@ import com.resolveai.user.entity.User;
 import com.resolveai.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,6 +38,7 @@ public class TeamService {
     /**
      * Creates a new team with unique name validation and optional lead user assignment.
      */
+    @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, allEntries = true)
     @Transactional
     public TeamResponse createTeam(TeamCreateRequest request) {
         String trimmedName = request.getName().trim();
@@ -63,6 +67,7 @@ public class TeamService {
     /**
      * Updates an existing team's name, description, lead user, or active state.
      */
+    @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, allEntries = true)
     @Transactional
     public TeamResponse updateTeam(Long id, TeamUpdateRequest request) {
         Team team = teamRepository.findById(id)
@@ -99,6 +104,7 @@ public class TeamService {
     /**
      * Retrieves a single team by ID including its current member count.
      */
+    @Cacheable(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, key = "'team_' + #id")
     @Transactional(readOnly = true)
     public TeamResponse getTeamById(Long id) {
         Team team = teamRepository.findById(id)
@@ -110,6 +116,7 @@ public class TeamService {
     /**
      * Lists teams, optionally filtering to active teams only.
      */
+    @Cacheable(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, key = "'list_' + (#activeOnly != null ? #activeOnly : 'all')")
     @Transactional(readOnly = true)
     public List<TeamResponse> getTeams(Boolean activeOnly) {
         List<Team> teams = (activeOnly != null && activeOnly)
@@ -127,6 +134,7 @@ public class TeamService {
     /**
      * Lists all members belonging to a team.
      */
+    @Cacheable(value = com.resolveai.common.config.CacheConfig.CACHE_TEAM_MEMBERS, key = "#teamId")
     @Transactional(readOnly = true)
     public List<TeamMemberResponse> getTeamMembers(Long teamId) {
         if (!teamRepository.existsById(teamId)) {
@@ -140,6 +148,10 @@ public class TeamService {
     /**
      * Adds a user to a team, validating active status and preventing duplicate memberships.
      */
+    @Caching(evict = {
+            @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAM_MEMBERS, key = "#teamId"),
+            @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, allEntries = true)
+    })
     @Transactional
     public TeamMemberResponse addTeamMember(Long teamId, TeamMemberRequest request) {
         Team team = teamRepository.findById(teamId)
@@ -185,6 +197,10 @@ public class TeamService {
     /**
      * Removes a user from a team. User record remains intact.
      */
+    @Caching(evict = {
+            @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAM_MEMBERS, key = "#teamId"),
+            @CacheEvict(value = com.resolveai.common.config.CacheConfig.CACHE_TEAMS, allEntries = true)
+    })
     @Transactional
     public void removeTeamMember(Long teamId, Long userId) {
         Team team = teamRepository.findById(teamId)

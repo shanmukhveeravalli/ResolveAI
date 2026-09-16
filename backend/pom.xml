@@ -43,6 +43,12 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Spring Data Redis & Cache -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
         <!-- Flyway Database Migrations -->
         <dependency>
             <groupId>org.flywaydb</groupId>

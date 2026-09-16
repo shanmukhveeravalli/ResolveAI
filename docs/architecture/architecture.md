@@ -380,4 +380,26 @@ Phase 9 implements an enterprise operational analytics engine computing real-tim
 - Incident metrics support optional date range filters (`from` and `to`) evaluated against indexed `createdAt` timestamps.
 - Controllers accept both calendar date format (`YYYY-MM-DD`, parsed to UTC start/end of day) and precise ISO-8601 UTC date-time timestamps.
 
+---
+
+## 13. Caching Architecture & Redis (Phase 12)
+
+Phase 12 integrates Redis as a production-grade distributed cache layer while strictly maintaining PostgreSQL as the single source of truth:
+
+### 13.1 Cache Strategy & Domains
+- **Target Domains**: High-read, low-write operational entities:
+  - `knowledge_articles` (TTL: 30 minutes): Caches published/read knowledge articles by ID. Evicted on article updates, publishing, and archiving.
+  - `teams` (TTL: 1 hour): Caches single team lookups (`team_{id}`) and team rosters (`list_{activeOnly}`). Evicted on team creation, metadata updates, and member roster changes.
+  - `team_members` (TTL: 30 minutes): Caches team membership rosters by `teamId`. Evicted on member addition or removal.
+- **Security Boundary**: Zero caching for sensitive authentication credentials, passwords, JWT tokens, or security audit logs.
+
+### 13.2 Serialization & Time Support
+- Configured with `GenericJackson2JsonRedisSerializer` backed by Jackson's `JavaTimeModule` and ISO-8601 formatting for clean, schema-safe serialization of DTOs containing `Instant` timestamps.
+
+### 13.3 Resilience & Fallback Guarantees
+- Implements custom `CacheErrorHandler` extending Spring's `CachingConfigurer`.
+- If Redis experiences a network partition, timeout, or service unavailability, cache exceptions are logged as warnings and execution seamlessly falls back to PostgreSQL queries. Cache errors never break application endpoints.
+- In test environments (`@ActiveProfiles("test")`), an in-memory `simple` cache manager provides fast, deterministic execution without requiring an external Redis instance.
+
+
 
