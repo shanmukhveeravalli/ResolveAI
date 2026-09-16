@@ -221,10 +221,46 @@ The application is engineered iteratively across 19 planned phases:
 - **Phase 12**: RAG & Similarity Search (Vector Embeddings)
 - **Phase 13**: Redis Caching & Rate Limiting ✅
 - **Phase 14**: Docker & Containerization ✅
-- **Phase 15**: Automated Testing & Security Hardening
-- **Phase 16**: CI/CD Pipelines
+- **Phase 15**: CI/CD Pipelines (GitHub Actions) ✅
+- **Phase 16**: Automated Testing & Security Hardening
 - **Phase 17**: Cloud Deployment Readiness
 - **Phase 18**: Final Polish, Demo Scenarios & Release
+
+---
+
+## Continuous Integration & CI/CD (Phase 15)
+
+ResolveAI utilizes **GitHub Actions** (`.github/workflows/ci.yml`) to automatically validate codebase integrity, test suites, and container build configurations.
+
+### Triggers
+- **Pushes**: Commits pushed to the `main` branch.
+- **Pull Requests**: Pull requests opened or updated against `main`.
+- **Concurrency Control**: Automatically cancels obsolete in-progress pipeline runs when new commits arrive on the same branch/ref.
+
+### Pipeline Jobs & Verification Matrix
+
+| Job | Environment | Execution Steps | Verification Scope |
+| :--- | :--- | :--- | :--- |
+| **Backend CI** (`backend-ci`) | Ubuntu Latest / JDK 21 (Temurin) | `mvn -B clean test` (Maven cache enabled) | Spring Boot 3 compilation, unit tests, integration tests (H2 in-memory mode), security configs, and Flyway migration scripts. |
+| **Frontend CI** (`frontend-ci`) | Ubuntu Latest / Node.js 20 | `npm ci` → `npm run build` (npm cache enabled) | Dependency lockfile adherence, TypeScript typecheck (`tsc`), and production Vite bundling. |
+| **Docker CI** (`docker-ci`) | Ubuntu Latest / Buildx | `docker compose config` → Docker Buildx | Validates `docker-compose.yml` syntax/service definitions and builds production container images for backend and frontend. |
+
+### Local Verification for Contributors
+Contributors can execute the exact pipeline checks locally prior to pushing code:
+```bash
+# 1. Run Backend CI checks
+mvn clean test
+
+# 2. Run Frontend CI checks
+cd frontend
+npm ci
+npm run build
+cd ..
+
+# 3. Validate Docker Compose configuration & image builds
+docker compose config
+docker compose build
+```
 
 ---
 
