@@ -401,5 +401,60 @@ Phase 12 integrates Redis as a production-grade distributed cache layer while st
 - If Redis experiences a network partition, timeout, or service unavailability, cache exceptions are logged as warnings and execution seamlessly falls back to PostgreSQL queries. Cache errors never break application endpoints.
 - In test environments (`@ActiveProfiles("test")`), an in-memory `simple` cache manager provides fast, deterministic execution without requiring an external Redis instance.
 
+---
+
+## 14. Testing & Quality Engineering Architecture (Phase 13)
+
+Phase 13 establishes a comprehensive, deterministic, multi-tier automated test harness enforcing functional requirements, invariant rules, and security boundaries.
+
+### 14.1 Test Layers
+1. **Unit Tests (`@ExtendWith(MockitoExtension.class)` / Plain JUnit 5)**:
+   - Evaluates pure business logic, DTO mapping, security utilities, and algorithmic calculation in microsecond execution time.
+   - Examples: `AuthorizationServiceTest`, `ResourceAuthorizationTest`, `AiNonMutationAndFailureTest`, `RedisFaultToleranceTest`, `CacheConfigTest`.
+2. **WebMvc / Controller & Security Integration Tests (`@SpringBootTest` + `@AutoConfigureMockMvc`)**:
+   - Validates end-to-end HTTP request processing, Jackson JSON deserialization, RFC 7807 problem envelopes, and Spring Security filters (JWT validation, 401 Unauthorized vs 403 Forbidden).
+   - Examples: `NegativeValidationAndErrorIntegrationTest`, `AuthenticationIntegrationTest`, `RbacIntegrationTest`.
+3. **Repository & Schema Migration Tests (`@SpringBootTest`)**:
+   - Executes Flyway version migrations against in-memory PostgreSQL-compatible H2 instances and verifies data constraints, indexes, and custom JPQL projection queries.
+   - Examples: `SchemaMigrationIntegrationTest`, `RepositoryIntegrationTest`.
+4. **Domain Subsystem Integration Tests**:
+   - Verifies full multi-step workflows across bounded contexts:
+     - Incident lifecycle transitions & SLA timer creation: `IncidentIntegrationTest`, `SlaIntegrationTest`.
+     - Knowledge base search & visibility: `KnowledgeIntegrationTest`.
+     - Team assignment & notifications: `TeamIntegrationTest`, `NotificationIntegrationTest`.
+     - Analytics KPI queries: `AnalyticsIntegrationTest`.
+     - RAG retrieval, vector ranking, and advisory generation: `AiIntegrationTest`, `RagIntegrationTest`.
+     - Cache hits and invalidation: `KnowledgeArticleCachingTest`, `TeamCachingTest`.
+
+### 14.2 Critical Scenarios & Invariants Covered
+- **Strict Non-Mutation by AI/RAG**: AI Triage and grounded RAG endpoints (`/api/ai/incidents/{id}/analyze`, `/api/ai/incidents/{id}/rag`) are strictly advisory and read-only. Repository `save()` is never invoked, preserving complete deterministic control for human operators.
+- **Resource-Level Authorization**:
+  - `EMPLOYEE` can only view and mutate their own reported incidents (`reporter_id == currentUser.id`).
+  - `ENGINEER` can only access incidents assigned to them or reported by them.
+  - `MANAGER` can view and manage incidents assigned to their designated squad/team.
+  - Draft and archived Knowledge Base articles are hidden from unauthorized callers.
+- **RFC-7807 Error Envelopes & Negative Cases**:
+  - `400 Bad Request`: Validation failures (`VALIDATION_ERROR`) and illegal state transitions (`INVALID_STATUS_TRANSITION`).
+  - `401 Unauthorized`: Unauthenticated requests or invalid/expired JWT tokens (`UNAUTHORIZED`).
+  - `403 Forbidden`: Authenticated requests attempting cross-tenant or unauthorized resource access (`FORBIDDEN`).
+  - `404 Not Found`: Lookups for missing entity identifiers (`NOT_FOUND`).
+- **Resilient Redis Fallback**: Cache errors (timeouts, connection refused) are absorbed by `CacheErrorHandler`, falling through to PostgreSQL without failing user transactions.
+- **Cache Eviction**: Adding/modifying teams or publishing/archiving articles immediately invalidates cached lookups.
+
+### 14.3 External Dependency Isolation
+- **No Real AI Provider Calls**: `AiProvider` and `EmbeddingProvider` are mocked or backed by the mock provider profile to eliminate external network calls, token consumption, and non-deterministic LLM hallucinations during test runs.
+- **No Real Redis Daemon Required**: Spring Cache uses the in-memory `simple` provider under the `test` profile while validating Redis serialization and cache configs via unit tests.
+- **Embedded Database**: H2 configured in PostgreSQL compatibility mode ensures test isolation, automatic teardown, and sub-minute execution.
+
+### 14.4 Test Execution
+```bash
+# Run all backend unit and integration tests
+cd backend && mvn test
+
+# Run a focused test suite or test class
+cd backend && mvn test "-Dtest=ResourceAuthorizationTest,NegativeValidationAndErrorIntegrationTest"
+```
+
+
 
 
