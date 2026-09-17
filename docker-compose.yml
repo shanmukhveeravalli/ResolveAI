@@ -1,5 +1,5 @@
-﻿# ==============================================================================
-# ResolveAI — Production-Ready Multi-Container Stack (Phase 14)
+# ==============================================================================
+# ResolveAI — Production-Ready Multi-Container Stack (Phase 14 / Phase 16)
 # ==============================================================================
 # Services:
 #   - postgres: PostgreSQL 16 + pgvector relational database with persistent volume
@@ -11,16 +11,29 @@
 #   - Container-to-container communication uses the internal bridge network
 #     (resolveai-network).
 #   - Frontend (Nginx) reverse-proxies /api/* to http://backend:8080/api/*.
-#   - Only frontend (port 80) and database/cache (ports 5432, 6379) are published
-#     to host ports by default, avoiding host port conflicts on 8080.
-#   - If host access directly to backend is needed, BACKEND_PORT can be configured.
+#   - Frontend port 80 is the only publicly published application port.
+#   - Backend port 8080 is exposed on the internal network only (not published
+#     to the host), avoiding host port conflicts (e.g. Jenkins on 8080).
+#   - PostgreSQL (5432) and Redis (6379) ports are published for local dev;
+#     remove or restrict those ports in production for security.
+#   - For production, supply all secrets via environment variables or a secrets
+#     manager — never commit real values to source control.
 #
-# Usage:
+# Local Dev Quick Start:
+#   cp .env.example .env          # configure as needed
 #   docker compose up --build -d
-#   docker compose down
-#   docker compose ps
+#   docker compose ps             # verify all 4 containers are healthy
+#
+# Production:
+#   docker compose --env-file .env.prod up -d
+#
+# Useful commands:
 #   docker compose logs -f
+#   docker compose down           # preserves volumes
+#   docker compose down -v        # removes volumes (destructive!)
 # ==============================================================================
+
+name: resolveai
 
 services:
   # ----------------------------------------------------------------------------
@@ -54,7 +67,18 @@ services:
     image: redis:7-alpine
     container_name: resolveai-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    # When REDIS_PASSWORD is set (non-empty), Redis is started with --requirepass.
+    # An empty REDIS_PASSWORD (local dev default) starts Redis without auth.
+    command: >
+      sh -c "
+        if [ -n \"$$REDIS_PASSWORD\" ]; then
+          redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\"
+        else
+          redis-server --appendonly yes
+        fi
+      "
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -62,7 +86,9 @@ services:
     networks:
       - resolveai-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # redis-cli ping works without auth when REDIS_PASSWORD is empty;
+      # with a password, Redis would return NOAUTH — using --no-auth-warning for clean output
+      test: ["CMD-SHELL", "redis-cli ${REDIS_PASSWORD:+-a $REDIS_PASSWORD} --no-auth-warning ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -104,9 +130,17 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
       AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-text-embedding-3-small}
+      AI_EMBEDDING_DIMENSIONS: ${AI_EMBEDDING_DIMENSIONS:-1536}
       AI_TOP_K: ${AI_TOP_K:-5}
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_TIMEOUT: ${AI_TIMEOUT:-10}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-30s}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      ACTUATOR_HEALTH_SHOW_DETAILS: ${ACTUATOR_HEALTH_SHOW_DETAILS:-when_authorized}
+      DB_SSL_MODE: ${DB_SSL_MODE:-prefer}
+      REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED:-false}
     expose:
       - "8080"
     networks:

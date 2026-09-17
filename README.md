@@ -222,11 +222,50 @@ The application is engineered iteratively across 19 planned phases:
 - **Phase 13**: Redis Caching & Rate Limiting ✅
 - **Phase 14**: Docker & Containerization ✅
 - **Phase 15**: CI/CD Pipelines (GitHub Actions) ✅
-- **Phase 16**: Automated Testing & Security Hardening
-- **Phase 17**: Cloud Deployment Readiness
+- **Phase 16**: Cloud Deployment Readiness ✅
+- **Phase 17**: Automated Testing & Security Hardening
 - **Phase 18**: Final Polish, Demo Scenarios & Release
 
 ---
+
+## Cloud Deployment Readiness (Phase 16)
+
+ResolveAI is production-ready for cloud deployment using its Dockerized multi-container architecture.
+
+### Production Spring Profile
+Set `SPRING_PROFILES_ACTIVE=prod` to activate `application-prod.yml`, which enables:
+- Strict environment-variable-only configuration (no insecure defaults)
+- Graceful server shutdown (`server.shutdown: graceful`, 30s timeout)
+- HikariCP production-grade connection pool settings
+- Redis SSL/TLS support
+- Actuator health probes for liveness and readiness
+- Swagger/OpenAPI UI disabled by default
+
+### Recommended Cloud Architecture
+```
+[ HTTPS Reverse Proxy / Load Balancer ]
+            |
+    ┌───────┴────────┐
+    │   Frontend     │       Backend (internal only, :8080)
+    │  Nginx (:80)   │──/api/──▶  Spring Boot  ──▶ PostgreSQL 16+pgvector
+    └────────────────┘                              Redis 7
+```
+
+### Key Production Requirements
+- PostgreSQL **must** have the `pgvector` extension (for RAG/embeddings from Phase 11–12)
+- Backend port `8080` must **not** be exposed publicly — Nginx proxies `/api/` internally
+- All secrets injected via environment variables or a secrets manager — never hardcoded
+- HTTPS termination at the load balancer or reverse proxy layer
+
+### Full Deployment Documentation
+See [`docs/deployment/cloud-deployment.md`](docs/deployment/cloud-deployment.md) for:
+- Complete environment variable reference
+- Provider-neutral Docker deployment process
+- Health check endpoint guide
+- Persistent storage requirements
+- Deployment verification checklist
+- Graceful shutdown & rollback procedures
+
 
 ## Continuous Integration & CI/CD (Phase 15)
 

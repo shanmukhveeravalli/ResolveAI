@@ -1,0 +1,134 @@
+# ==============================================================================
+# ResolveAI — Production Profile Configuration (Cloud & Staging Environments)
+# ==============================================================================
+# In production, all secrets, hostnames, and credentials MUST be supplied via
+# environment variables or cloud secret managers. No default passwords are provided.
+# ==============================================================================
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  forward-headers-strategy: framework
+
+spring:
+  # ----------------------------------------------------------------------------
+  # Datasource Configuration (PostgreSQL 16 + pgvector)
+  # ----------------------------------------------------------------------------
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:resolveai_db}?sslmode=${DB_SSL_MODE:prefer}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: ResolveAI-HikariCP-Prod
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 20000
+      leak-detection-threshold: 60000
+
+  # ----------------------------------------------------------------------------
+  # JPA / Hibernate Configuration
+  # ----------------------------------------------------------------------------
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        generate_statistics: false
+
+  # ----------------------------------------------------------------------------
+  # Flyway Schema Migrations
+  # ----------------------------------------------------------------------------
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: classpath:db/migration,classpath:db/vendor/postgresql
+    baseline-on-migrate: true
+    validate-on-migrate: true
+
+  # ----------------------------------------------------------------------------
+  # Redis Cache & Rate Limiting Configuration
+  # ----------------------------------------------------------------------------
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
+      timeout: ${REDIS_TIMEOUT:2000ms}
+      connect-timeout: 3000ms
+  cache:
+    type: redis
+
+# ------------------------------------------------------------------------------
+# Spring Boot Actuator & Observability
+# ------------------------------------------------------------------------------
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: ${ACTUATOR_HEALTH_SHOW_DETAILS:when_authorized}
+      probes:
+        enabled: true
+  info:
+    env:
+      enabled: false
+
+# ------------------------------------------------------------------------------
+# OpenAPI / Swagger UI (Disabled by default in production)
+# ------------------------------------------------------------------------------
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+# ------------------------------------------------------------------------------
+# ResolveAI Enterprise Domain Configurations
+# ------------------------------------------------------------------------------
+resolveai:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  jwt:
+    secret: ${JWT_SECRET}
+    access-expiration-ms: ${JWT_ACCESS_EXPIRATION:900000}
+    refresh-expiration-ms: ${JWT_REFRESH_EXPIRATION:604800000}
+  ai:
+    enabled: ${AI_ENABLED:false}
+    provider: ${AI_PROVIDER:mock}
+    api-key: ${AI_API_KEY:}
+    model: ${AI_MODEL:gpt-4o-mini}
+    embedding-model: ${AI_EMBEDDING_MODEL:text-embedding-3-small}
+    embedding-dimensions: ${AI_EMBEDDING_DIMENSIONS:1536}
+    top-k: ${AI_TOP_K:5}
+    base-url: ${AI_BASE_URL:https://api.openai.com/v1}
+    timeout-seconds: ${AI_TIMEOUT:10}
+
+# ------------------------------------------------------------------------------
+# Logging Configuration (Production)
+# ------------------------------------------------------------------------------
+# Default level is INFO. Override LOG_LEVEL env var for more/less verbosity.
+# Hibernate SQL and statistics are silenced to WARN to avoid PII leakage.
+# ------------------------------------------------------------------------------
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.resolveai: ${APP_LOG_LEVEL:INFO}
+    org.hibernate.SQL: WARN
+    org.hibernate.stat: WARN
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    com.zaxxer.hikari: WARN
+  pattern:
+    # Structured log pattern suitable for log aggregation (Loki, CloudWatch, etc.)
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ} [%thread] %-5level %logger{36} - %msg%n"
+

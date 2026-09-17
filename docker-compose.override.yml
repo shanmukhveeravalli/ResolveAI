@@ -1,0 +1,32 @@
+# ==============================================================================
+# ResolveAI — Docker Compose Local Development Override (Phase 16)
+# ==============================================================================
+# This file is automatically loaded by `docker compose` alongside
+# docker-compose.yml when running in the project root.
+#
+# Overrides specific to local development convenience:
+#   - Ensures SPRING_PROFILES_ACTIVE defaults to 'dev' (not 'prod')
+#   - Uses weak local-only defaults (never use these in production)
+#   - Exposes PostgreSQL and Redis to the host for local tooling access
+#     (e.g. pgAdmin, Tableplus, Redis Insight)
+#
+# For production deployment, do NOT use this file:
+#   docker compose -f docker-compose.yml --env-file .env.prod up -d
+#
+# WARNING: This file must NOT be committed with real secrets.
+# It is listed in .gitignore via the .env.* pattern exclusions.
+# ==============================================================================
+
+services:
+  backend:
+    environment:
+      # Force dev profile in local Docker dev to match local Spring Boot behavior
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      # Show SQL for debugging in dev (overrides any inherited setting)
+    # Uncomment below to attach a debugger (JDWP) to the backend container:
+    # ports:
+    #   - "5005:5005"
+    # environment:
+    #   JAVA_OPTS: >-
+    #     -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
+    #     -XX:+UseG1GC -XX:MaxRAMPercentage=75.0
