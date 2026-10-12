@@ -109,11 +109,71 @@ Repository (Spring Data JPA, Native/JPQL queries, Auditing)
 | `audit` | Append-only security and operational audit trail recording actor, action, timestamp, diffs, and client IP. |
 | `ai` | Resilient interface for incident summarization, category/severity suggestion, similarity search, and RAG advisory. |
 
+### Component & Module Boundaries Diagram
+
+```mermaid
+graph TD
+    subgraph CoreContext ["Core Incident Context"]
+        IncSvc["IncidentService"]
+        IncRepo["IncidentRepository"]
+        CommentSvc["IncidentCommentService"]
+        HistSvc["IncidentHistoryService"]
+    end
+
+    subgraph IdentityContext ["Identity & Access Context"]
+        AuthSvc["AuthService"]
+        JwtSvc["JwtService"]
+        UserSvc["UserService"]
+        RbacSvc["AuthorizationService"]
+    end
+
+    subgraph GovernanceContext ["Governance & Workflow Context"]
+        SlaSvc["SlaService"]
+        TeamSvc["TeamService"]
+        NotifSvc["NotificationService"]
+        AuditSvc["AuditLogService"]
+    end
+
+    subgraph IntelligenceContext ["Intelligence & Knowledge Context"]
+        KbSvc["KnowledgeArticleService"]
+        AiSvc["AiService"]
+        RagSvc["RagService"]
+        VecSvc["VectorSearchService"]
+    end
+
+    IncSvc -->|Evaluates SLA| SlaSvc
+    IncSvc -->|Verifies Team/Assignee| TeamSvc
+    IncSvc -->|Dispatches Events| NotifSvc
+    IncSvc -->|Records Audit| AuditSvc
+    IncSvc -->|Enforces Security| RbacSvc
+    IncSvc -->|Links Knowledge| KbSvc
+    AiSvc -->|Reads Incident Context| IncSvc
+    RagSvc -->|Retrieves Knowledge & Incidents| VecSvc
+    KbSvc -->|Indexes Embeddings| VecSvc
+```
+
 ---
 
 ## 5. Incident Lifecycle & State Machine
 
 The incident state machine is the core workflow engine of ResolveAI. Any invalid transition throws an `InvalidStateTransitionException` resulting in an HTTP 400 Bad Request.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NEW : Incident Created
+    NEW --> TRIAGED : Triage Reviewed
+    NEW --> ASSIGNED : Directly Assigned
+    TRIAGED --> ASSIGNED : Assigned to Engineer/Team
+    ASSIGNED --> IN_PROGRESS : Engineer Acknowledges
+    IN_PROGRESS --> ESCALATED : Escalation Triggered
+    ESCALATED --> IN_PROGRESS : Re-evaluated / Reassigned
+    IN_PROGRESS --> RESOLVED : Solution Provided
+    ESCALATED --> RESOLVED : Solution Provided
+    RESOLVED --> REOPENED : Solution Rejected
+    REOPENED --> IN_PROGRESS : Re-investigation
+    RESOLVED --> CLOSED : Confirmed / Closed
+    CLOSED --> [*]
+```
 
 ### Formal State Transition Table
 
@@ -147,6 +207,52 @@ Every state change or assignee mutation triggers an immutable `IncidentHistory` 
   - **Access Token**: Short-lived (15 minutes), contains `sub` (user email), `userId`, and `role` claims.
   - **Refresh Token**: Long-lived (7 days), stored in the database with rotation and revocation support.
 - **Password Security**: Passwords hashed using **BCrypt** (cost factor 12) with salted digests.
+
+#### Authentication & JWT Lifecycle Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Web Client (Browser)
+    participant RateLimiter as RateLimitInterceptor (Redis/Memory)
+    participant Security as SecurityFilterChain
+    participant AuthCtrl as AuthController
+    participant AuthSvc as AuthService
+    participant JwtSvc as JwtService
+    participant DB as PostgreSQL (users, roles)
+
+    Note over Client,DB: User Login Flow
+    Client->>RateLimiter: POST /api/auth/login (email, password)
+    RateLimiter->>RateLimiter: Check IP/User rate limit (15 req/60s)
+    alt Rate limit exceeded
+        RateLimiter-->>Client: 429 Too Many Requests (Retry-After header)
+    end
+    RateLimiter->>Security: Forward request
+    Security->>AuthCtrl: login(LoginRequest)
+    AuthCtrl->>AuthSvc: authenticate(email, password)
+    AuthSvc->>DB: findByEmail(email)
+    DB-->>AuthSvc: User (BCrypt passwordHash, role)
+    AuthSvc->>AuthSvc: BCrypt.checkpw(rawPassword, passwordHash)
+    AuthSvc->>JwtSvc: generateAccessToken(user), generateRefreshToken(user)
+    JwtSvc-->>AuthSvc: accessToken (15m), refreshToken (7d)
+    AuthSvc-->>AuthCtrl: AuthResponse(tokens, role, userProfile)
+    AuthCtrl-->>Client: 200 OK + JWT Tokens
+
+    Note over Client,DB: Authenticated API Request Flow
+    Client->>Security: GET /api/incidents (Authorization: Bearer <accessToken>)
+    Security->>JwtSvc: validateToken(accessToken) & extractClaims()
+    JwtSvc-->>Security: Claims (sub, role, userId)
+    Security->>Security: Populate SecurityContextHolder (ROLE_*)
+    Security->>AuthCtrl: Forward to protected Controller / Service
+    AuthCtrl-->>Client: 200 OK (Protected Data)
+
+    Note over Client,DB: Token Refresh Flow
+    Client->>RateLimiter: POST /api/auth/refresh (refreshToken)
+    RateLimiter->>AuthCtrl: refresh(token)
+    AuthCtrl->>JwtSvc: validateRefreshToken()
+    JwtSvc-->>AuthCtrl: New Access Token
+    AuthCtrl-->>Client: 200 OK + New Access Token
+```
 
 ### 6.2 Role-Based Access Control (RBAC) Matrix
 
@@ -269,6 +375,50 @@ sequenceDiagram
      - **Grounded AI**: `RagService` orchestrates vector search, top-K filtering, and prompt grounding before dispatching to the AI provider. Responses include strict source citations.
      - **Failure Isolation**: Embedding failures or vector database timeouts do not disrupt core CRUD operations or lifecycle transitions.
 
+### 8.3 Grounded RAG Pipeline & Data Flow Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend UI (AiTriagePage)
+    participant RateLimiter as RateLimitInterceptor (20 req/60s)
+    participant Ctrl as AiController (/api/ai/incidents/{id}/rag-analyze)
+    participant RagSvc as RagService
+    participant TextPrep as RagTextPreparationService
+    participant EmbProv as EmbeddingProvider (OpenAI text-embedding-3-small)
+    participant VecSvc as VectorSearchService
+    participant PG as PostgreSQL + pgvector (HNSW Index)
+    participant AiProv as AiProvider (Chat Completions)
+
+    Client->>RateLimiter: POST /api/ai/incidents/{id}/rag-analyze
+    RateLimiter->>Ctrl: Forward if within rate limit
+    Ctrl->>RagSvc: analyzeIncidentWithRag(incidentId)
+    RagSvc->>RagSvc: Verify permissions & load Incident
+    RagSvc->>TextPrep: prepareIncidentSearchText(incident)
+    TextPrep-->>RagSvc: Normalized query text
+    RagSvc->>EmbProv: generateEmbedding(queryText)
+    EmbProv-->>RagSvc: 1536-dimensional float vector
+    
+    par Vector Search Knowledge Articles
+        RagSvc->>VecSvc: findSimilarArticles(vector, topK=5)
+        VecSvc->>PG: SELECT <=> vector ORDER BY distance LIMIT 5 (PUBLISHED only)
+        PG-->>VecSvc: Top K Articles with cosine similarity
+        VecSvc-->>RagSvc: List<RagSourceItem> (Articles)
+    and Vector Search Historical Incidents
+        RagSvc->>VecSvc: findSimilarIncidents(vector, topK=5)
+        VecSvc->>PG: SELECT <=> vector ORDER BY distance LIMIT 5 (RESOLVED/CLOSED)
+        PG-->>VecSvc: Top K Historical Tickets with cosine similarity
+        VecSvc-->>RagSvc: List<RagSourceItem> (Incidents)
+    end
+
+    RagSvc->>RagSvc: Rank & assemble grounded RagAnalysisPrompt
+    RagSvc->>AiProv: generateGroundedAnalysis(promptWithCitations)
+    AiProv-->>RagSvc: Diagnosis, Resolution Suggestion, Confidence
+    RagSvc->>RagSvc: Attach RagSourceDto (sourceType, id, title, similarity, snippet)
+    RagSvc-->>Ctrl: RagAnalysisResponse (Advisory Only)
+    Ctrl-->>Client: 200 OK (Diagnosis, Resolution, Sources Cited)
+```
+
 ---
 
 ## 9. In-App Notification System (Phase 7 Implemented)
@@ -313,18 +463,27 @@ The `notification` module (`com.resolveai.notification`) provides transactional 
 
 ---
 
-## 10. Redis Integration Architecture (Phased)
+## 10. Redis Integration & Rate Limiting Architecture
 
-To be enabled in Phase 13 without impacting earlier phases:
-- **Cache-Aside (`@Cacheable`)**:
-  - `categories` list (TTL: 1 hour)
-  - `sla_policies` list (TTL: 1 hour)
-  - Dashboard analytics summary (TTL: 5 minutes)
-- **Cache Invalidation (`@CacheEvict`)**:
-  - Admin updates to categories or SLA policies clear corresponding caches immediately.
-- **Rate Limiting**:
-  - Token bucket filter on `/api/auth/login` (prevent brute-force: 5 requests / min per IP).
-  - Rate limiting on `/api/ai/*` (prevent LLM quota exhaustion: 10 requests / min per user).
+Redis 7 serves as both a distributed cache layer and a high-performance sliding window rate limiter:
+
+### 10.1 Distributed Rate Limiting (Phase 17 Implemented)
+- **Architecture**: Enforced via Spring MVC `RateLimitInterceptor` and custom `@RateLimit` annotations.
+- **Key Strategy**: Authenticated requests are keyed by principal email (`user:{email}`); anonymous endpoints (`/login`, `/register`) are keyed by client IP (`ip:{clientIp}`) resolved via `X-Forwarded-For` or `X-Real-IP`.
+- **Resilient Fallback**: Implemented by `RateLimiterService`. If Redis is unavailable or unconfigured, sliding window accounting automatically falls back to an internal thread-safe in-memory `ConcurrentHashMap` with zero disruption to traffic.
+- **Enforced Thresholds**:
+  - `POST /api/auth/register`: 10 requests / 60 seconds (Anti-spam / account exhaustion)
+  - `POST /api/auth/login`: 15 requests / 60 seconds (Brute-force protection)
+  - `POST /api/auth/refresh`: 30 requests / 60 seconds
+  - `POST /api/ai/incidents/{id}/analyze`: 20 requests / 60 seconds (LLM cost and quota protection)
+  - `POST /api/ai/incidents/{id}/rag-analyze`: 20 requests / 60 seconds (Vector & LLM quota protection)
+- **Response Handling**: Over-limit requests throw `RateLimitExceededException` handled by `GlobalExceptionHandler`, returning `HTTP 429 Too Many Requests` accompanied by an RFC-compliant `Retry-After: {seconds}` header.
+
+### 10.2 Cache-Aside & Eviction Strategy (Phase 13 Implemented)
+- **`knowledge_articles`** (TTL: 30 minutes): Cached by ID for `PUBLISHED` articles. `DRAFT` and `ARCHIVED` articles bypass the cache (`unless = "#result == null || #result.status.name() != 'PUBLISHED'")` to enforce real-time RBAC. Evicted on publish, update, and archive.
+- **`teams`** (TTL: 1 hour): Cached on ID and roster queries. Evicted on team updates or member changes.
+- **`team_members`** (TTL: 30 minutes): Cached by `teamId`. Evicted when members join or leave.
+- **Fail-Safe Operation**: `CacheErrorHandler` swallows Redis connection exceptions as warnings, allowing queries to seamlessly fall back to PostgreSQL without failing user transactions.
 
 ---
 
@@ -454,6 +613,102 @@ cd backend && mvn test
 # Run a focused test suite or test class
 cd backend && mvn test "-Dtest=ResourceAuthorizationTest,NegativeValidationAndErrorIntegrationTest"
 ```
+
+---
+
+## 15. Deployment & Container Architecture (Phase 14 & 16)
+
+ResolveAI provides a containerized multi-service deployment model with network isolation and defense-in-depth security.
+
+### 15.1 Deployment & Docker Network Topology Diagram
+
+```mermaid
+graph TD
+    subgraph HostEnvironment ["Host Environment / Public Ingress"]
+        Browser["User Browser / Client"]
+        HostPort80["Host Port 80 (HTTP)"]
+    end
+
+    subgraph DockerBridge ["Docker Bridge Network (resolveai-network)"]
+        subgraph FrontendContainer ["resolveai-frontend (nginx:alpine)"]
+            Nginx["Nginx Reverse Proxy & Static Server"]
+            StaticFiles["React 18 SPA Distributables"]
+        end
+
+        subgraph BackendContainer ["resolveai-backend (eclipse-temurin:21)"]
+            SpringBoot["Spring Boot 3 Modular Monolith\n(port 8080 internal)"]
+            ActuatorHealth["/actuator/health (public)\n/actuator/beans (secured)"]
+        end
+
+        subgraph DataTier ["Isolated Persistent Data Services"]
+            PG["resolveai-postgres (pgvector/pgvector:pg16)\nport 5432 (internal/host dev)"]
+            Redis["resolveai-redis (redis:7-alpine)\nport 6379 (internal/host dev)"]
+        end
+    end
+
+    subgraph Volumes ["Persistent Storage"]
+        PGVol[("postgres_data volume")]
+        RedisVol[("redis_data volume (AOF)")]
+    end
+
+    Browser -->|HTTP Requests| HostPort80
+    HostPort80 --> Nginx
+    Nginx -->|Serves Static UI| StaticFiles
+    Nginx -->|Proxies /api/ requests internally| SpringBoot
+    SpringBoot --> ActuatorHealth
+    SpringBoot -->|JDBC Connection Pool (HikariCP)| PG
+    SpringBoot -->|Lettuce Redis Client| Redis
+    PG --> PGVol
+    Redis --> RedisVol
+```
+
+### 15.2 Ingress & Security Isolation Rules
+- **Frontend / Nginx Proxy**: Exposes port `80` to host traffic. Serves static React assets and reverse-proxies `/api/*` to `http://resolveai-backend:8080/api/*`.
+- **Backend Port Protection**: The Spring Boot container exposes port `8080` only within the internal Docker bridge network (`resolveai-network`). It does not require host port mapping, preventing conflicts with existing host services (such as Jenkins or local developer servers on port 8080).
+- **Graceful Shutdown**: The production Spring profile activates `server.shutdown: graceful` with a 30-second timeout (`SHUTDOWN_TIMEOUT=30s`) allowing in-flight transactions to conclude cleanly before container termination.
+
+---
+
+## 16. Continuous Integration & Pipeline Architecture (Phase 15)
+
+The automated CI pipeline is orchestrated via **GitHub Actions** (`.github/workflows/ci.yml`), validating codebase integrity across independent parallel matrix jobs:
+
+### 16.1 GitHub Actions Workflow Diagram
+
+```mermaid
+flowchart TD
+    GitPush["Git Push / Pull Request to main"] --> Concurrency["Concurrency Control\n(cancel-in-progress: true)"]
+
+    subgraph CIJobs ["Parallel GitHub Actions Jobs"]
+        subgraph BackendJob ["Job 1: backend-ci (Ubuntu Latest, JDK 21 Temurin)"]
+            B1["actions/checkout@v4"] --> B2["actions/setup-java@v4 (cache: maven)"]
+            B2 --> B3["mvn -B clean test"]
+            B3 --> B4["Validate 282 Unit & Integration Tests\n(H2 PostgreSQL mode + Flyway migrations)"]
+        end
+
+        subgraph FrontendJob ["Job 2: frontend-ci (Ubuntu Latest, Node.js 20)"]
+            F1["actions/checkout@v4"] --> F2["actions/setup-node@v4 (cache: npm)"]
+            F2 --> F3["npm ci (Clean dependency lockfile install)"]
+            F3 --> F4["npm run build (TypeScript tsc + Vite production bundle)"]
+        end
+
+        subgraph DockerJob ["Job 3: docker-ci (Ubuntu Latest)"]
+            D1["actions/checkout@v4"] --> D2["docker/setup-buildx-action@v3"]
+            D2 --> D3["docker compose config (Syntax and topology validation)"]
+            D3 --> D4["docker build backend & frontend images (Build verification)"]
+        end
+    end
+
+    Concurrency --> BackendJob
+    Concurrency --> FrontendJob
+    Concurrency --> DockerJob
+
+    BackendJob --> MergeGate{"Branch Protection Rules Passed?"}
+    FrontendJob --> MergeGate
+    DockerJob --> MergeGate
+    MergeGate -->|All 3 Jobs Green| Ready["Ready for Review / Merge"]
+```
+
 
 
 

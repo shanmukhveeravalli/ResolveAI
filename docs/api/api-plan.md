@@ -21,7 +21,9 @@
 | `404 Not Found` | Resource not found | Target ID does not exist in the database. |
 | `409 Conflict` | Unique conflict | Duplicate email, category slug, or concurrent update conflict. |
 | `422 Unprocessable`| Bean validation error | Missing required fields, invalid email format, negative values. |
+| `429 Too Many Requests`| Rate limit exceeded | Request threshold exceeded; includes `Retry-After: {seconds}` header. |
 | `500 Server Error`| Internal failure | Unhandled exceptions (caught and normalized by GlobalExceptionHandler). |
+| `503 Unavailable` | External service outage | Auxiliary service (AI/LLM or embedding provider) offline or degraded. |
 
 ---
 
@@ -934,3 +936,45 @@ All notification endpoints are strictly scoped to the authenticated user derived
   "path": "/api/ai/incidents/42/analyze"
 }
 ```
+- **Response `429 Too Many Requests`**: Rate limit exceeded (20 requests/60s). Returns `Retry-After: {seconds}` header.
+
+#### `POST /api/ai/incidents/{incidentId}/rag-analyze`
+- **Access**: Authenticated (`ENGINEER`, `MANAGER`, `ADMIN`). Caller must pass resource-level incident authorization (`canAccessIncident`).
+- **Rate Limit**: 20 requests per 60 seconds (`@RateLimit(limit = 20, periodSeconds = 60, keyPrefix = "ai_rag")`).
+- **Description**: Performs evidence-grounded Retrieval-Augmented Generation (RAG) analysis. Vectorizes the incident context, performs cosine similarity searches over published knowledge articles and resolved historical incidents via `pgvector`, synthesizes diagnosis and resolution guidance, and returns strict citations.
+- **Safety Guarantee**: Strictly read-only (`@Transactional(readOnly = true)`). Never alters incident database state.
+- **Path Parameters**:
+  - `incidentId` (integer, required): Target incident identifier.
+- **Response `200 OK`**: `RagAnalysisResponse`
+```json
+{
+  "incidentId": 42,
+  "diagnosis": "The service is experiencing Redis connection timeouts due to connection pool exhaustion during peak traffic periods.",
+  "resolutionSuggestion": "Increase max-active connection pool limit in application configuration and verify Lettuce client timeout settings per KB article.",
+  "confidence": 0.88,
+  "sources": [
+    {
+      "sourceType": "KNOWLEDGE_ARTICLE",
+      "sourceId": 14,
+      "title": "Resolving Lettuce Redis Connection Pool Starvation",
+      "similarity": 0.924,
+      "reference": "KB-14",
+      "snippet": "When Lettuce pool max-active is exceeded, commands block until timeout. Recommended pool sizing is 2x CPU cores."
+    },
+    {
+      "sourceType": "HISTORICAL_INCIDENT",
+      "sourceId": 89,
+      "title": "INC-20260901-089: Redis pool timeout during payroll processing",
+      "similarity": 0.865,
+      "reference": "INC-20260901-089",
+      "snippet": "Resolved by scaling Lettuce pool from 8 to 32 and setting command timeout to 2000ms."
+    }
+  ]
+}
+```
+- **Response `401 Unauthorized`**: Missing, expired, or malformed JWT token.
+- **Response `403 Forbidden`**: Insufficient role permissions or caller cannot access target incident.
+- **Response `404 Not Found`**: Incident ID does not exist.
+- **Response `429 Too Many Requests`**: Rate limit exceeded (20 req / 60s). Includes `Retry-After: {seconds}` header.
+- **Response `503 Service Unavailable`**: AI service disabled or provider/embedding timeout.
+
