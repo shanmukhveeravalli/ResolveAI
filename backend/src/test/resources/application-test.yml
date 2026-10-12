@@ -19,6 +19,11 @@ spring:
   cache:
     type: simple
 
+management:
+  health:
+    redis:
+      enabled: false
+
 resolveai:
   cors:
     allowed-origins: "*"

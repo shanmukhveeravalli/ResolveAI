@@ -225,8 +225,13 @@ public class KnowledgeArticleService {
 
     /**
      * Retrieves a single knowledge article by ID subject to visibility rules.
+     * Caches only PUBLISHED articles so DRAFT/ARCHIVED articles always execute RBAC checks.
      */
-    @org.springframework.cache.annotation.Cacheable(value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES, key = "#id")
+    @org.springframework.cache.annotation.Cacheable(
+            value = com.resolveai.common.config.CacheConfig.CACHE_KNOWLEDGE_ARTICLES,
+            key = "#id",
+            unless = "#result == null || #result.status.name() != 'PUBLISHED'"
+    )
     @Transactional(readOnly = true)
     public KnowledgeArticleResponse getArticleById(Long id) {
         KnowledgeArticle article = knowledgeArticleRepository.findById(id)

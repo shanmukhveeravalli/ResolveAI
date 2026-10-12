@@ -139,11 +139,15 @@ public class JwtService {
     }
 
     private SecretKey getSigningKey() {
+        String secret = jwtProperties.getSecret();
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException("JWT signing secret must not be null or blank");
+        }
         byte[] keyBytes;
         try {
-            keyBytes = Decoders.BASE64.decode(jwtProperties.getSecret());
+            keyBytes = Decoders.BASE64.decode(secret);
         } catch (Exception e) {
-            keyBytes = jwtProperties.getSecret().getBytes(StandardCharsets.UTF_8);
+            keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         }
         if (keyBytes.length < 32) {
             byte[] padded = new byte[32];

@@ -236,6 +236,62 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
     }
 
+    @ExceptionHandler(com.resolveai.common.ratelimit.RateLimitExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleRateLimitExceededException(
+            com.resolveai.common.ratelimit.RateLimitExceededException ex, HttpServletRequest request) {
+
+        log.warn("Rate limit exceeded at [{}]: {}", request.getRequestURI(), ex.getMessage());
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.TOO_MANY_REQUESTS.value())
+                .error("TOO_MANY_REQUESTS")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(error);
+    }
+
+    @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleConstraintViolationException(
+            jakarta.validation.ConstraintViolationException ex, HttpServletRequest request) {
+
+        List<ApiErrorResponse.ValidationErrorDetail> details = new ArrayList<>();
+        ex.getConstraintViolations().forEach(violation -> details.add(new ApiErrorResponse.ValidationErrorDetail(
+                violation.getPropertyPath().toString(),
+                violation.getMessage()
+        )));
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("VALIDATION_ERROR")
+                .message("Request constraint validation failed")
+                .path(request.getRequestURI())
+                .details(details)
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingServletRequestParameterException(
+            org.springframework.web.bind.MissingServletRequestParameterException ex, HttpServletRequest request) {
+
+        ApiErrorResponse error = ApiErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("BAD_REQUEST")
+                .message(String.format("Required request parameter '%s' is missing", ex.getParameterName()))
+                .path(request.getRequestURI())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
     @ExceptionHandler(AiServiceUnavailableException.class)
     public ResponseEntity<ApiErrorResponse> handleAiServiceUnavailableException(
             AiServiceUnavailableException ex, HttpServletRequest request) {

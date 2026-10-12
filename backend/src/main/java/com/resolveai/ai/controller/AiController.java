@@ -2,6 +2,7 @@ package com.resolveai.ai.controller;
 
 import com.resolveai.ai.dto.IncidentAnalysisResponse;
 import com.resolveai.ai.service.AiService;
+import com.resolveai.common.ratelimit.RateLimit;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -37,12 +38,14 @@ public class AiController {
      */
     @PostMapping("/incidents/{incidentId}/analyze")
     @PreAuthorize("hasAnyRole('ENGINEER', 'MANAGER', 'ADMIN')")
+    @RateLimit(limit = 20, periodSeconds = 60, keyPrefix = "ai_analyze")
     @Operation(summary = "Analyze incident with AI", description = "Generates advisory categorization, priority, severity suggestions, and summary. Does not modify incident state.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Analysis generated successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - insufficient role or incident permissions"),
             @ApiResponse(responseCode = "404", description = "Incident not found"),
+            @ApiResponse(responseCode = "429", description = "Too Many Requests - rate limit exceeded"),
             @ApiResponse(responseCode = "503", description = "AI service unavailable, disabled, or provider failure")
     })
     public ResponseEntity<IncidentAnalysisResponse> analyzeIncident(@PathVariable Long incidentId) {
@@ -58,12 +61,14 @@ public class AiController {
      */
     @PostMapping("/incidents/{incidentId}/rag-analyze")
     @PreAuthorize("hasAnyRole('ENGINEER', 'MANAGER', 'ADMIN')")
+    @RateLimit(limit = 20, periodSeconds = 60, keyPrefix = "ai_rag")
     @Operation(summary = "Analyze incident with Grounded RAG", description = "Retrieves relevant knowledge articles and historical incidents to produce an evidence-grounded diagnosis and resolution suggestion.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "RAG analysis generated successfully"),
             @ApiResponse(responseCode = "401", description = "Unauthorized - authentication required"),
             @ApiResponse(responseCode = "403", description = "Forbidden - insufficient role or incident permissions"),
             @ApiResponse(responseCode = "404", description = "Incident not found"),
+            @ApiResponse(responseCode = "429", description = "Too Many Requests - rate limit exceeded"),
             @ApiResponse(responseCode = "503", description = "AI service or embedding provider unavailable")
     })
     public ResponseEntity<com.resolveai.ai.rag.dto.RagAnalysisResponse> analyzeIncidentWithRag(@PathVariable Long incidentId) {

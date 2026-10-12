@@ -68,7 +68,7 @@ class KnowledgeArticleCachingTest {
                 .symptoms("High 504 rates")
                 .rootCause("Downstream timeouts")
                 .resolution("Use circuit breaker")
-                .status(KnowledgeArticleStatus.DRAFT)
+                .status(KnowledgeArticleStatus.PUBLISHED)
                 .author(author)
                 .build();
 
@@ -122,19 +122,26 @@ class KnowledgeArticleCachingTest {
     @Test
     @DisplayName("publishArticle evicts cached article")
     void publishArticleEvictsCache() {
-        when(knowledgeArticleRepository.findById(1L)).thenReturn(Optional.of(testArticle));
-        when(knowledgeArticleRepository.save(any(KnowledgeArticle.class))).thenReturn(testArticle);
+        KnowledgeArticle draftToPublish = KnowledgeArticle.builder()
+                .id(3L)
+                .title("Draft To Publish")
+                .slug("draft-to-publish")
+                .status(KnowledgeArticleStatus.DRAFT)
+                .author(author)
+                .build();
+        when(knowledgeArticleRepository.findById(3L)).thenReturn(Optional.of(draftToPublish));
+        when(knowledgeArticleRepository.save(any(KnowledgeArticle.class))).thenReturn(draftToPublish);
 
-        // Populate cache
-        knowledgeArticleService.getArticleById(1L);
+        // Pre-seed cache under 3L
         Cache cache = cacheManager.getCache(CacheConfig.CACHE_KNOWLEDGE_ARTICLES);
-        assertThat(cache.get(1L)).isNotNull();
+        cache.put(3L, KnowledgeArticleResponse.fromEntity(testArticle));
+        assertThat(cache.get(3L)).isNotNull();
 
         // Publish article
-        knowledgeArticleService.publishArticle(1L, "engineer@resolveai.com");
+        knowledgeArticleService.publishArticle(3L, "engineer@resolveai.com");
 
         // Cache should be evicted
-        assertThat(cache.get(1L)).isNull();
+        assertThat(cache.get(3L)).isNull();
     }
 
     @Test
@@ -153,5 +160,29 @@ class KnowledgeArticleCachingTest {
 
         // Cache should be evicted
         assertThat(cache.get(1L)).isNull();
+    }
+
+    @Test
+    @DisplayName("getArticleById does not cache DRAFT articles to ensure RBAC checks are never bypassed")
+    void draftArticleNotCachedForAuthorizationSafety() {
+        KnowledgeArticle draftArticle = KnowledgeArticle.builder()
+                .id(2L)
+                .title("Draft Secrets")
+                .slug("draft-secrets")
+                .status(KnowledgeArticleStatus.DRAFT)
+                .author(author)
+                .build();
+
+        when(knowledgeArticleRepository.findById(2L)).thenReturn(Optional.of(draftArticle));
+
+        // First call
+        KnowledgeArticleResponse response = knowledgeArticleService.getArticleById(2L);
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(2L);
+
+        // Cache must NOT have stored the draft article
+        Cache cache = cacheManager.getCache(CacheConfig.CACHE_KNOWLEDGE_ARTICLES);
+        assertThat(cache).isNotNull();
+        assertThat(cache.get(2L)).isNull();
     }
 }
